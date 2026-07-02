@@ -45,6 +45,12 @@
         <datalist id="storeList"></datalist>
       </div>
 
+      <div class="field">
+        <label for="cityInput">Город / населённый пункт</label>
+        <input id="cityInput" list="cityList" placeholder="Где находится точка" autocomplete="off">
+        <datalist id="cityList"></datalist>
+      </div>
+
       <div class="geo-row">
         <span id="geoStatus" class="geo-chip">📍 Определяем местоположение…</span>
         <button id="btnGeoRetry" class="small-btn hidden">Повторить</button>
@@ -84,6 +90,18 @@
     </section>
 
   </main>
+
+  <!-- ВЫБОР СПОСОБА ОТПРАВКИ -->
+  <div id="shareSheet" class="sheet-overlay hidden">
+    <div class="sheet">
+      <h3>Как отправить отчёт?</h3>
+      <p class="hint">Для Teams и OneDrive подойдёт «всё сразу». Почтовые приложения не принимают таблицу и фото одним набором — для почты отправьте их по очереди, двумя письмами.</p>
+      <button id="shareAll" class="sheet-btn">📦 Всё сразу: таблица + фото</button>
+      <button id="shareCsv" class="sheet-btn">📄 Таблица CSV</button>
+      <button id="sharePhotos" class="sheet-btn">🖼 Фото</button>
+      <button id="shareCancel" class="sheet-btn cancel">Отмена</button>
+    </div>
+  </div>
 
   <div id="toast" class="toast hidden"></div>
 

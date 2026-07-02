@@ -149,6 +149,41 @@ h2 { font-size: 1.05rem; margin: 22px 0 10px; }
   gap: 12px;
 }
 
+/* Заголовок города (подпапка) */
+.visit-list li.city-header {
+  background: none;
+  border: none;
+  padding: 10px 4px 6px;
+  margin-bottom: 4px;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.city-header .chev {
+  color: var(--muted);
+  font-size: 0.8rem;
+  transition: transform 0.15s;
+}
+
+.city-header.closed .chev { transform: rotate(-90deg); }
+
+.city-header .city-name {
+  flex: 1;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--accent-dark);
+}
+
+.city-header .count {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 .visit-info { flex: 1; min-width: 0; cursor: pointer; }
 
 .visit-store {
@@ -464,6 +499,61 @@ input:focus, textarea:focus, select:focus {
   font-size: 0.9rem;
   cursor: pointer;
   line-height: 1;
+}
+
+/* Меню выбора способа отправки */
+.sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.sheet {
+  background: var(--card);
+  border-radius: 20px 20px 0 0;
+  padding: 20px 16px calc(env(safe-area-inset-bottom) + 16px);
+  width: 100%;
+  max-width: 560px;
+}
+
+.sheet h3 { margin: 0 0 8px; font-size: 1.05rem; }
+
+.sheet .hint { margin-bottom: 14px; }
+
+.sheet-btn {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.sheet-btn:active { transform: scale(0.99); }
+
+.sheet-btn.done {
+  border-color: var(--ok);
+  color: var(--ok);
+  background: #dcfce7;
+}
+
+.sheet-btn.cancel {
+  text-align: center;
+  font-weight: 400;
+  color: var(--muted);
+  background: none;
+  border: none;
+  margin-bottom: 0;
 }
 
 .toast {

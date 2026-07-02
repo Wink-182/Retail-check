@@ -49,7 +49,7 @@ const CHECKLIST = [
   { id: 'comment', label: 'Комментарии', type: 'textarea' },
 ];
 
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.2.0';
 const MAX_PHOTOS = 10;
 const PHOTO_MAX_SIDE = 1400;
 const PHOTO_QUALITY = 0.72;
@@ -60,6 +60,10 @@ const settings = {
   set employee(v)   { localStorage.setItem('rc.employee', v); },
   get stores()      { try { return JSON.parse(localStorage.getItem('rc.stores')) || []; } catch { return []; } },
   set stores(v)     { localStorage.setItem('rc.stores', JSON.stringify(v)); },
+  get cities()      { try { return JSON.parse(localStorage.getItem('rc.cities')) || []; } catch { return []; } },
+  set cities(v)     { localStorage.setItem('rc.cities', JSON.stringify(v)); },
+  get lastCity()    { return localStorage.getItem('rc.lastCity') || ''; },
+  set lastCity(v)   { localStorage.setItem('rc.lastCity', v); },
 };
 
 // ---------- IndexedDB ----------
@@ -156,26 +160,52 @@ async function renderHome() {
 
   const STATUS_LABEL = { queued: 'Не отправлен', sent: 'Отправлен' };
 
+  // группируем по городам; порядок городов — по самому свежему визиту
+  const byCity = new Map();
   for (const v of visits) {
-    const li = document.createElement('li');
-    const photos = v.photos ? v.photos.length : 0;
-    li.innerHTML = `
-      <div class="visit-info" title="Открыть и изменить">
-        <div class="visit-store"></div>
-        <div class="visit-meta">${fmtDate(v.startedAt)} · 📷 ${photos} · ✎ изменить</div>
-      </div>
-      <span class="status ${v.status}">${STATUS_LABEL[v.status] || v.status}</span>
-      <button class="visit-del" aria-label="Удалить">🗑</button>`;
-    li.querySelector('.visit-store').textContent = v.store || '(без названия)';
-    li.querySelector('.visit-info').onclick = () => openVisit(v);
-    li.querySelector('.visit-del').onclick = async () => {
-      if (v.status !== 'sent' && !confirm('Визит ещё не попал в отчёт. Удалить безвозвратно?')) return;
-      await deleteVisit(v.id);
+    const c = v.city || 'Без города';
+    if (!byCity.has(c)) byCity.set(c, []);
+    byCity.get(c).push(v);
+  }
+
+  for (const [city, cityVisits] of byCity) {
+    const closed = collapsedCities.has(city);
+    const header = document.createElement('li');
+    header.className = 'city-header' + (closed ? ' closed' : '');
+    header.innerHTML = `<span class="chev">▾</span><span class="city-name"></span><span class="count"></span>`;
+    header.querySelector('.city-name').textContent = city;
+    header.querySelector('.count').textContent = cityVisits.length;
+    header.onclick = () => {
+      if (collapsedCities.has(city)) collapsedCities.delete(city);
+      else collapsedCities.add(city);
       renderHome();
     };
-    list.appendChild(li);
+    list.appendChild(header);
+    if (closed) continue;
+
+    for (const v of cityVisits) {
+      const li = document.createElement('li');
+      const photos = v.photos ? v.photos.length : 0;
+      li.innerHTML = `
+        <div class="visit-info" title="Открыть и изменить">
+          <div class="visit-store"></div>
+          <div class="visit-meta">${fmtDate(v.startedAt)} · 📷 ${photos} · ✎ изменить</div>
+        </div>
+        <span class="status ${v.status}">${STATUS_LABEL[v.status] || v.status}</span>
+        <button class="visit-del" aria-label="Удалить">🗑</button>`;
+      li.querySelector('.visit-store').textContent = v.store || '(без названия)';
+      li.querySelector('.visit-info').onclick = () => openVisit(v);
+      li.querySelector('.visit-del').onclick = async () => {
+        if (v.status !== 'sent' && !confirm('Визит ещё не попал в отчёт. Удалить безвозвратно?')) return;
+        await deleteVisit(v.id);
+        renderHome();
+      };
+      list.appendChild(li);
+    }
   }
 }
+
+const collapsedCities = new Set();
 
 // ---------- Форма визита ----------
 let draft = null; // текущий заполняемый визит
@@ -185,6 +215,7 @@ function newDraft() {
     id: uuid(),
     employee: settings.employee,
     store: '',
+    city: '',
     startedAt: new Date().toISOString(),
     geo: null,
     answers: {},
@@ -393,6 +424,7 @@ function buildChecklistUI() {
 
 function fillStoreDatalist() {
   $('#storeList').innerHTML = settings.stores.map(s => `<option value="${s.replace(/"/g, '&quot;')}">`).join('');
+  $('#cityList').innerHTML = settings.cities.map(s => `<option value="${s.replace(/"/g, '&quot;')}">`).join('');
 }
 
 function startVisit() {
@@ -403,6 +435,7 @@ function startVisit() {
   }
   newDraft();
   $('#storeInput').value = '';
+  $('#cityInput').value = settings.lastCity; // обычно за день обходят один город
   fillStoreDatalist();
   buildChecklistUI();
   renderPhotos();
@@ -418,6 +451,7 @@ function openVisit(v) {
     photos: (v.photos || []).map(p => ({ blob: p.blob, name: p.name })),
   };
   $('#storeInput').value = v.store || '';
+  $('#cityInput').value = v.city || '';
   fillStoreDatalist();
   buildChecklistUI();
   renderPhotos();
@@ -532,9 +566,15 @@ function renderPhotos() {
 // ---------- Сохранение визита ----------
 async function saveVisit() {
   draft.store = $('#storeInput').value.trim();
+  draft.city = $('#cityInput').value.trim();
   if (!draft.store) {
     toast('Укажите название точки');
     $('#storeInput').focus();
+    return;
+  }
+  if (!draft.city) {
+    toast('Укажите город');
+    $('#cityInput').focus();
     return;
   }
   const wasSent = draft.status === 'sent';
@@ -542,10 +582,14 @@ async function saveVisit() {
   else draft.updatedAt = new Date().toISOString();
   draft.status = 'queued';
 
-  // запоминаем новую точку в списке подсказок
+  // запоминаем точку и город в списках подсказок
   if (!settings.stores.includes(draft.store)) {
     settings.stores = [...settings.stores, draft.store];
   }
+  if (!settings.cities.includes(draft.city)) {
+    settings.cities = [...settings.cities, draft.city];
+  }
+  settings.lastCity = draft.city;
 
   await putVisit(draft);
   draft = null;
@@ -681,7 +725,7 @@ const ALL_COLUMNS = CHECKLIST.flatMap(itemColumns);
 
 function buildCsv(visits, photoNames) {
   const headers = [
-    'Сотрудник', 'Точка', 'Начало визита', 'Завершение',
+    'Сотрудник', 'Город', 'Точка', 'Начало визита', 'Завершение',
     'Широта', 'Долгота', 'Точность (м)', 'Карта',
     ...ALL_COLUMNS.map(c => c.label),
     'Фото', 'ID',
@@ -690,7 +734,7 @@ function buildCsv(visits, photoNames) {
   for (const v of visits) {
     const a = v.answers || {};
     lines.push([
-      v.employee, v.store, fmtExcel(v.startedAt), fmtExcel(v.finishedAt),
+      v.employee, v.city || '', v.store, fmtExcel(v.startedAt), fmtExcel(v.finishedAt),
       v.geo ? v.geo.lat : '', v.geo ? v.geo.lng : '', v.geo ? v.geo.accuracy : '',
       v.geo ? `https://yandex.ru/maps/?pt=${v.geo.lng},${v.geo.lat}&z=17` : '',
       ...ALL_COLUMNS.map(c => c.get(a)),
@@ -710,7 +754,8 @@ async function buildReportParts(visits) {
 
   for (const v of visits) {
     const d = new Date(v.startedAt);
-    const prefix = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}_${pad2(d.getHours())}-${pad2(d.getMinutes())}_${sanitizeName(v.store)}`;
+    const place = [sanitizeName(v.city), sanitizeName(v.store)].filter(Boolean).join('_');
+    const prefix = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}_${pad2(d.getHours())}-${pad2(d.getMinutes())}_${place}`;
     const names = [];
     for (let i = 0; i < (v.photos || []).length; i++) {
       let name = `${prefix}_${i + 1}.jpg`;
@@ -748,6 +793,10 @@ async function tryShare(files) {
   }
 }
 
+// Меню выбора способа отправки. Почтовые приложения Android не принимают
+// смешанный набор файлов (CSV + JPEG) — поэтому даём отправить по отдельности.
+let pendingShare = null; // { parts, unsent, csvDone, photosDone }
+
 async function shareReport() {
   const unsent = (await getAllVisits())
     .filter(v => v.status === 'queued')
@@ -760,47 +809,95 @@ async function shareReport() {
 
   toast('Готовим отчёт…');
   const parts = await buildReportParts(unsent);
+  pendingShare = { parts, unsent, csvDone: false, photosDone: false };
 
-  // Основной путь: отправить сами файлы (CSV + JPEG) — эти типы Android
-  // разрешает в системном «Поделиться», в отличие от ZIP
-  const files = [
-    new File([parts.csvU8], parts.csvName, { type: 'text/csv' }),
-    ...parts.photos.map(p => new File([p.u8], p.name, { type: 'image/jpeg' })),
-  ];
+  $('#shareCsv').textContent = `📄 Таблица CSV (визитов: ${unsent.length})`;
+  $('#shareCsv').classList.remove('done');
+  $('#sharePhotos').textContent = `🖼 Фото (${parts.photos.length})`;
+  $('#sharePhotos').classList.remove('done');
+  $('#sharePhotos').classList.toggle('hidden', parts.photos.length === 0);
+  $('#shareSheet').classList.remove('hidden');
+}
 
-  let result = await tryShare(files);
-  if (result === 'aborted') {
-    toast('Отправка отменена');
-    return;
-  }
+function closeShareSheet() {
+  $('#shareSheet').classList.add('hidden');
+}
 
-  // Запасной путь: один ZIP (пробуем поделиться, иначе — в загрузки)
-  if (result !== 'ok') {
-    const now = new Date();
-    const zip = buildZip([
-      { name: parts.csvName, data: parts.csvU8, date: now },
-      ...parts.photos.map(p => ({ name: `фото/${p.name}`, data: p.u8, date: p.date })),
-    ]);
-    result = await tryShare([new File([zip], parts.zipName, { type: 'application/zip' })]);
-    if (result === 'aborted') {
-      toast('Отправка отменена');
-      return;
-    }
-    if (result !== 'ok') {
-      downloadBlob(zip, parts.zipName);
-      toast('Отчёт сохранён файлом в загрузки — отправьте его коллегам вручную', 5000);
-    }
-  }
-
-  if (result === 'ok') toast(`Отчёт отправлен: визитов — ${unsent.length}`);
-
+async function markBatchSent(unsent) {
   const when = new Date().toISOString();
   for (const v of unsent) {
+    if (v.status === 'sent') continue;
     v.status = 'sent';
     v.sentAt = when;
     await putVisit(v);
   }
   renderHome();
+}
+
+const csvFileOf = (parts) => new File([parts.csvU8], parts.csvName, { type: 'text/csv' });
+const photoFilesOf = (parts) => parts.photos.map(p => new File([p.u8], p.name, { type: 'image/jpeg' }));
+
+async function shareAllHandler() {
+  const ps = pendingShare;
+  if (!ps) return;
+  const result = await tryShare([csvFileOf(ps.parts), ...photoFilesOf(ps.parts)]);
+  if (result === 'aborted') return;
+  if (result === 'ok') {
+    toast(`Отчёт отправлен: визитов — ${ps.unsent.length}`);
+  } else {
+    // компьютер или «Поделиться» недоступно — скачиваем одним ZIP
+    const zip = buildZip([
+      { name: ps.parts.csvName, data: ps.parts.csvU8, date: new Date() },
+      ...ps.parts.photos.map(p => ({ name: `фото/${p.name}`, data: p.u8, date: p.date })),
+    ]);
+    downloadBlob(zip, ps.parts.zipName);
+    toast('Отчёт сохранён в загрузки — отправьте его коллегам вручную', 5000);
+  }
+  closeShareSheet();
+  await markBatchSent(ps.unsent);
+  pendingShare = null;
+}
+
+async function shareCsvHandler() {
+  const ps = pendingShare;
+  if (!ps) return;
+  const result = await tryShare([csvFileOf(ps.parts)]);
+  if (result === 'aborted') return;
+  if (result !== 'ok') {
+    downloadBlob(new Blob([ps.parts.csvU8], { type: 'text/csv' }), ps.parts.csvName);
+    toast('Таблица сохранена в загрузки', 4000);
+  }
+  ps.csvDone = true;
+  $('#shareCsv').classList.add('done');
+  $('#shareCsv').textContent = '✓ Таблица отправлена';
+  await markBatchSent(ps.unsent); // данные доставлены — визиты считаем отправленными
+  if (ps.parts.photos.length && !ps.photosDone) {
+    toast('Таблица отправлена. Теперь отправьте фото 🖼', 4000);
+  } else {
+    closeShareSheet();
+    pendingShare = null;
+  }
+}
+
+async function sharePhotosHandler() {
+  const ps = pendingShare;
+  if (!ps) return;
+  const result = await tryShare(photoFilesOf(ps.parts));
+  if (result === 'aborted') return;
+  if (result !== 'ok') {
+    const zip = buildZip(ps.parts.photos.map(p => ({ name: p.name, data: p.u8, date: p.date })));
+    downloadBlob(zip, ps.parts.zipName.replace('.zip', '_фото.zip'));
+    toast('Фото сохранены архивом в загрузки', 4000);
+  }
+  ps.photosDone = true;
+  $('#sharePhotos').classList.add('done');
+  $('#sharePhotos').textContent = '✓ Фото отправлены';
+  if (!ps.csvDone) {
+    toast('Фото отправлены. Теперь отправьте таблицу 📄', 4000);
+  } else {
+    closeShareSheet();
+    pendingShare = null;
+  }
 }
 
 async function clearSent() {
@@ -834,6 +931,13 @@ async function main() {
   $('#btnSettings').onclick = () => nav('settings');
   $('#btnSaveSettings').onclick = saveSettings;
   $('#btnShare').onclick = shareReport;
+  $('#shareAll').onclick = shareAllHandler;
+  $('#shareCsv').onclick = shareCsvHandler;
+  $('#sharePhotos').onclick = sharePhotosHandler;
+  $('#shareCancel').onclick = () => { closeShareSheet(); pendingShare = null; };
+  $('#shareSheet').onclick = (e) => {
+    if (e.target === $('#shareSheet')) { closeShareSheet(); pendingShare = null; }
+  };
   $('#btnClearSent').onclick = clearSent;
   $('#btnGeoRetry').onclick = captureGeo;
   $('#btnBack').onclick = () => {
