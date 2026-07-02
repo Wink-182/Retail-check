@@ -149,7 +149,7 @@ h2 { font-size: 1.05rem; margin: 22px 0 10px; }
   gap: 12px;
 }
 
-.visit-info { flex: 1; min-width: 0; }
+.visit-info { flex: 1; min-width: 0; cursor: pointer; }
 
 .visit-store {
   font-weight: 600;
@@ -288,6 +288,126 @@ input:focus, textarea:focus, select:focus {
   border-color: var(--danger);
   color: var(--danger);
   font-weight: 700;
+}
+
+/* Множественный выбор (выпадающий список с галочками) */
+.multi-toggle {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 1rem;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.multi-toggle .arr { color: var(--muted); flex: none; }
+
+.multi-list {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.multi-opt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.multi-opt:last-child { border-bottom: none; }
+
+.multi-opt.hl {
+  background: #ccfbf1;
+  font-weight: 700;
+  color: var(--accent-dark);
+}
+
+.multi-opt input[type="checkbox"],
+.check-opt input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  accent-color: var(--accent);
+}
+
+/* Проценты с автоостатком */
+.pct-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.pct-row span { flex: 1; font-size: 0.95rem; }
+
+.pct-row input { width: 96px; text-align: center; }
+
+.pct-row.auto { margin-bottom: 0; color: var(--muted); }
+
+.pct-row.auto b {
+  width: 96px;
+  text-align: center;
+  font-size: 1rem;
+  color: var(--accent-dark);
+}
+
+.pct-row.auto.neg b { color: var(--danger); }
+
+/* Галочки есть/нет */
+.check-item > label.check-opt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  margin-bottom: 0;
+  font-size: 0.95rem;
+  font-weight: 400;
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* Оценка по брендам (сегменты) */
+.rate-row { margin-bottom: 12px; }
+.rate-row:last-child { margin-bottom: 0; }
+
+.rate-name {
+  display: block;
+  font-size: 0.9rem;
+  margin-bottom: 6px;
+}
+
+.seg { display: flex; gap: 6px; }
+
+.seg button {
+  flex: 1;
+  padding: 9px 2px;
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.seg button.sel {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
 }
 
 /* Фото */

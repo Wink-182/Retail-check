@@ -2,21 +2,54 @@
 
 // ============================================================
 // Чек-лист визита. Чтобы поменять вопросы — правьте этот список.
-// type: 'yesno' | 'number' | 'select' | 'text' | 'textarea'
+// Типы полей:
+//   yesno       — Да/Нет
+//   number      — число
+//   select      — один вариант из списка (options)
+//   multi       — несколько вариантов из списка (options);
+//                 highlight — какие варианты подсветить
+//   percents    — проценты по полям (fields), остаток до 100%
+//                 считается автоматически (autoLabel)
+//   checkgroup  — галочки есть/нет по списку items
+//   ratinggroup — для каждого из items один вариант из options
+//   text, textarea — свободный ввод
 // ============================================================
 const CHECKLIST = [
-  { id: 'stand',          label: 'Фирменный стенд в наличии',            type: 'yesno' },
-  { id: 'standCondition', label: 'Состояние стенда',                     type: 'select',
-    options: ['Отличное', 'Требует ухода', 'Повреждён', 'Стенда нет'] },
-  { id: 'skuCount',       label: 'Кол-во наших SKU в выкладке',          type: 'number' },
-  { id: 'priceTags',      label: 'Ценники на всех позициях',             type: 'yesno' },
-  { id: 'pos',            label: 'POS-материалы (каталоги, буклеты)',    type: 'yesno' },
-  { id: 'samples',        label: 'Образцы доступны покупателю',          type: 'yesno' },
-  { id: 'competitors',    label: 'Конкуренты рядом (какие бренды)',      type: 'text' },
-  { id: 'comment',        label: 'Комментарий',                          type: 'textarea' },
+  { id: 'clients',  label: 'Кол-во клиентов', type: 'number' },
+  { id: 'segment',  label: 'Сегмент магазина', type: 'select',
+    options: ['Бюджет', 'Средний', 'Средний +', 'Премиум'] },
+  { id: 'assortment', label: 'Ассортимент, %', type: 'percents',
+    fields: [
+      { id: 'laminate', label: 'Ламинат' },
+      { id: 'spc',      label: 'SPC' },
+    ],
+    autoLabel: 'Другое' },
+  { id: 'sales', label: 'Продажи', type: 'select',
+    options: ['Ниже прошлого года', 'Так же', 'Выше прошлого года'] },
+  { id: 'competitors', label: 'Конкуренты', type: 'multi',
+    options: ['AGT', 'Alpine Floor', 'Classen', 'Egger', 'Ever', 'Kronopol',
+              'Kronospan', 'Kronostar', 'Kronotex', 'Quick-Step', 'Tarkett',
+              'Unilin', 'Woodstyle'] },
+  { id: 'collections', label: 'Коллекции Кастамону', type: 'multi',
+    options: ['Amber', 'Black', 'Blue', 'Cherry', 'Color block', 'CraftCore',
+              'Emerald', 'Green', 'Grey', 'Lagoon', 'LaMoena', 'Malva',
+              'Marsala', 'Nanoclick', 'Orange', 'Prime', 'Red', 'River',
+              'Royce', 'Ruby', 'Stonex', 'Sunfloor', 'Ultramarine', 'Violet',
+              'Wings', 'Yellow'],
+    highlight: ['CraftCore', 'LaMoena'] },
+  { id: 'stands', label: 'Стенды', type: 'checkgroup',
+    items: ['Кастамону', 'LaMoena', 'CraftCore'] },
+  { id: 'communication', label: 'Коммуникация', type: 'multi',
+    options: ['Интернет', 'Сайт', 'Соцсети', 'Сарафанное радио', 'Другое'] },
+  { id: 'awareness', label: 'Знание брендов', type: 'ratinggroup',
+    items: ['Кастамону', 'LaMoena', 'CraftCore'],
+    options: ['Не знают', 'Знают плохо', 'Знают хорошо'] },
+  { id: 'priceTags', label: 'Ценники на всех позициях', type: 'yesno' },
+  { id: 'pos', label: 'POS-материалы (каталоги, буклеты)', type: 'yesno' },
+  { id: 'comment', label: 'Комментарии', type: 'textarea' },
 ];
 
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.1.0';
 const MAX_PHOTOS = 10;
 const PHOTO_MAX_SIDE = 1400;
 const PHOTO_QUALITY = 0.72;
@@ -91,7 +124,7 @@ function fmtExcel(iso) {
 const sanitizeName = (s) => String(s || '').replace(/[\\/:*?"<>|;#%&{}]/g, '_').replace(/\s+/g, ' ').trim();
 
 // ---------- Навигация между экранами ----------
-const VIEWS = { home: 'Retail Check', visit: 'Новый визит', settings: 'Настройки' };
+const VIEWS = { home: 'Retail Check', visit: 'Визит', settings: 'Настройки' };
 let currentView = 'home';
 
 function nav(view) {
@@ -127,13 +160,14 @@ async function renderHome() {
     const li = document.createElement('li');
     const photos = v.photos ? v.photos.length : 0;
     li.innerHTML = `
-      <div class="visit-info">
+      <div class="visit-info" title="Открыть и изменить">
         <div class="visit-store"></div>
-        <div class="visit-meta">${fmtDate(v.startedAt)} · 📷 ${photos}</div>
+        <div class="visit-meta">${fmtDate(v.startedAt)} · 📷 ${photos} · ✎ изменить</div>
       </div>
       <span class="status ${v.status}">${STATUS_LABEL[v.status] || v.status}</span>
       <button class="visit-del" aria-label="Удалить">🗑</button>`;
     li.querySelector('.visit-store').textContent = v.store || '(без названия)';
+    li.querySelector('.visit-info').onclick = () => openVisit(v);
     li.querySelector('.visit-del').onclick = async () => {
       if (v.status !== 'sent' && !confirm('Визит ещё не попал в отчёт. Удалить безвозвратно?')) return;
       await deleteVisit(v.id);
@@ -159,9 +193,16 @@ function newDraft() {
   };
 }
 
+function ensureObj(id) {
+  if (!draft.answers[id]) draft.answers[id] = {};
+  return draft.answers[id];
+}
+
 function buildChecklistUI() {
   const wrap = $('#checklistFields');
   wrap.innerHTML = '';
+  const a = draft.answers;
+
   for (const item of CHECKLIST) {
     const div = document.createElement('div');
     div.className = 'check-item';
@@ -169,36 +210,189 @@ function buildChecklistUI() {
     label.textContent = item.label;
     div.appendChild(label);
 
-    if (item.type === 'yesno') {
-      const row = document.createElement('div');
-      row.className = 'yesno';
-      const yes = document.createElement('button');
-      const no = document.createElement('button');
-      yes.type = 'button'; no.type = 'button';
-      yes.textContent = 'Да'; no.textContent = 'Нет';
-      yes.onclick = () => { draft.answers[item.id] = 'Да';  yes.className = 'sel-yes'; no.className = ''; };
-      no.onclick  = () => { draft.answers[item.id] = 'Нет'; no.className = 'sel-no'; yes.className = ''; };
-      row.append(yes, no);
-      div.appendChild(row);
-    } else if (item.type === 'select') {
-      const sel = document.createElement('select');
-      sel.innerHTML = '<option value="">— выберите —</option>' +
-        item.options.map(o => `<option>${o}</option>`).join('');
-      sel.onchange = () => { draft.answers[item.id] = sel.value; };
-      div.appendChild(sel);
-    } else if (item.type === 'textarea') {
-      const ta = document.createElement('textarea');
-      ta.rows = 3;
-      ta.oninput = () => { draft.answers[item.id] = ta.value; };
-      div.appendChild(ta);
-    } else {
-      const inp = document.createElement('input');
-      if (item.type === 'number') { inp.type = 'number'; inp.inputMode = 'numeric'; }
-      inp.oninput = () => { draft.answers[item.id] = inp.value; };
-      div.appendChild(inp);
+    switch (item.type) {
+
+      case 'yesno': {
+        const row = document.createElement('div');
+        row.className = 'yesno';
+        const yes = document.createElement('button');
+        const no = document.createElement('button');
+        yes.type = 'button'; no.type = 'button';
+        yes.textContent = 'Да'; no.textContent = 'Нет';
+        const paint = () => {
+          yes.className = a[item.id] === 'Да' ? 'sel-yes' : '';
+          no.className = a[item.id] === 'Нет' ? 'sel-no' : '';
+        };
+        yes.onclick = () => { a[item.id] = 'Да'; paint(); };
+        no.onclick  = () => { a[item.id] = 'Нет'; paint(); };
+        paint();
+        row.append(yes, no);
+        div.appendChild(row);
+        break;
+      }
+
+      case 'select': {
+        const sel = document.createElement('select');
+        sel.innerHTML = '<option value="">— выберите —</option>' +
+          item.options.map(o => `<option>${o}</option>`).join('');
+        if (a[item.id]) sel.value = a[item.id];
+        sel.onchange = () => { a[item.id] = sel.value; };
+        div.appendChild(sel);
+        break;
+      }
+
+      case 'multi': {
+        const selected = Array.isArray(a[item.id]) ? a[item.id] : (a[item.id] = []);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'multi-toggle';
+        const txt = document.createElement('span');
+        const arr = document.createElement('span');
+        arr.className = 'arr';
+        btn.append(txt, arr);
+
+        const listEl = document.createElement('div');
+        listEl.className = 'multi-list hidden';
+
+        const refresh = () => {
+          txt.textContent = selected.length === 0 ? 'Выбрать…'
+            : selected.length <= 2 ? selected.join(', ')
+            : `Выбрано: ${selected.length}`;
+          arr.textContent = listEl.classList.contains('hidden') ? '▾' : '▴';
+        };
+        btn.onclick = () => { listEl.classList.toggle('hidden'); refresh(); };
+
+        for (const opt of item.options) {
+          const optLabel = document.createElement('label');
+          optLabel.className = 'multi-opt' +
+            (item.highlight && item.highlight.includes(opt) ? ' hl' : '');
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = selected.includes(opt);
+          cb.onchange = () => {
+            const i = selected.indexOf(opt);
+            if (cb.checked && i === -1) selected.push(opt);
+            if (!cb.checked && i !== -1) selected.splice(i, 1);
+            refresh();
+          };
+          const span = document.createElement('span');
+          span.textContent = opt;
+          optLabel.append(cb, span);
+          listEl.appendChild(optLabel);
+        }
+        refresh();
+        div.append(btn, listEl);
+        break;
+      }
+
+      case 'percents': {
+        const obj = ensureObj(item.id);
+        const autoRow = document.createElement('div');
+        autoRow.className = 'pct-row auto';
+        const autoName = document.createElement('span');
+        autoName.textContent = item.autoLabel;
+        const autoVal = document.createElement('b');
+        autoRow.append(autoName, autoVal);
+
+        const recompute = () => {
+          const nums = item.fields
+            .map(f => parseFloat(obj[f.id]))
+            .filter(n => !isNaN(n));
+          if (!nums.length) { autoVal.textContent = '—'; autoRow.classList.remove('neg'); return; }
+          const rest = Math.round((100 - nums.reduce((s, n) => s + n, 0)) * 10) / 10;
+          autoVal.textContent = rest + ' %';
+          autoRow.classList.toggle('neg', rest < 0);
+        };
+
+        for (const f of item.fields) {
+          const row = document.createElement('div');
+          row.className = 'pct-row';
+          const name = document.createElement('span');
+          name.textContent = f.label;
+          const inp = document.createElement('input');
+          inp.type = 'number';
+          inp.inputMode = 'numeric';
+          inp.min = 0; inp.max = 100;
+          inp.placeholder = '%';
+          if (obj[f.id] != null) inp.value = obj[f.id];
+          inp.oninput = () => { obj[f.id] = inp.value; recompute(); };
+          row.append(name, inp);
+          div.appendChild(row);
+        }
+        recompute();
+        div.appendChild(autoRow);
+        break;
+      }
+
+      case 'checkgroup': {
+        const obj = ensureObj(item.id);
+        for (const sub of item.items) {
+          const optLabel = document.createElement('label');
+          optLabel.className = 'check-opt';
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = !!obj[sub];
+          cb.onchange = () => { obj[sub] = cb.checked; };
+          const span = document.createElement('span');
+          span.textContent = sub;
+          optLabel.append(cb, span);
+          div.appendChild(optLabel);
+        }
+        break;
+      }
+
+      case 'ratinggroup': {
+        const obj = ensureObj(item.id);
+        for (const sub of item.items) {
+          const row = document.createElement('div');
+          row.className = 'rate-row';
+          const name = document.createElement('span');
+          name.className = 'rate-name';
+          name.textContent = sub;
+          const seg = document.createElement('div');
+          seg.className = 'seg';
+          const btns = [];
+          for (const opt of item.options) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = opt;
+            b.onclick = () => {
+              obj[sub] = opt;
+              btns.forEach(x => x.classList.toggle('sel', x.textContent === opt));
+            };
+            if (obj[sub] === opt) b.classList.add('sel');
+            btns.push(b);
+            seg.appendChild(b);
+          }
+          row.append(name, seg);
+          div.appendChild(row);
+        }
+        break;
+      }
+
+      case 'textarea': {
+        const ta = document.createElement('textarea');
+        ta.rows = 3;
+        if (a[item.id]) ta.value = a[item.id];
+        ta.oninput = () => { a[item.id] = ta.value; };
+        div.appendChild(ta);
+        break;
+      }
+
+      default: { // number, text
+        const inp = document.createElement('input');
+        if (item.type === 'number') { inp.type = 'number'; inp.inputMode = 'numeric'; }
+        if (a[item.id] != null) inp.value = a[item.id];
+        inp.oninput = () => { a[item.id] = inp.value; };
+        div.appendChild(inp);
+      }
     }
     wrap.appendChild(div);
   }
+}
+
+function fillStoreDatalist() {
+  $('#storeList').innerHTML = settings.stores.map(s => `<option value="${s.replace(/"/g, '&quot;')}">`).join('');
 }
 
 function startVisit() {
@@ -209,11 +403,42 @@ function startVisit() {
   }
   newDraft();
   $('#storeInput').value = '';
-  $('#storeList').innerHTML = settings.stores.map(s => `<option value="${s.replace(/"/g, '&quot;')}">`).join('');
+  fillStoreDatalist();
   buildChecklistUI();
   renderPhotos();
   nav('visit');
   captureGeo();
+}
+
+// Открыть сохранённый визит для редактирования
+function openVisit(v) {
+  draft = {
+    ...v,
+    answers: JSON.parse(JSON.stringify(v.answers || {})),
+    photos: (v.photos || []).map(p => ({ blob: p.blob, name: p.name })),
+  };
+  $('#storeInput').value = v.store || '';
+  fillStoreDatalist();
+  buildChecklistUI();
+  renderPhotos();
+  nav('visit');
+  renderGeoChip();
+}
+
+// Показать сохранённое гео без повторного запроса —
+// при редактировании из дома координаты перезаписывать нельзя
+function renderGeoChip() {
+  const chip = $('#geoStatus');
+  const retry = $('#btnGeoRetry');
+  if (draft.geo) {
+    chip.className = 'geo-chip ok';
+    chip.textContent = `📍 Место зафиксировано (±${draft.geo.accuracy} м)`;
+    retry.classList.add('hidden');
+  } else {
+    chip.className = 'geo-chip fail';
+    chip.textContent = '📍 Координаты не записаны';
+    retry.classList.remove('hidden');
+  }
 }
 
 function captureGeo() {
@@ -312,7 +537,10 @@ async function saveVisit() {
     $('#storeInput').focus();
     return;
   }
-  draft.finishedAt = new Date().toISOString();
+  const wasSent = draft.status === 'sent';
+  if (!draft.finishedAt) draft.finishedAt = new Date().toISOString();
+  else draft.updatedAt = new Date().toISOString();
+  draft.status = 'queued';
 
   // запоминаем новую точку в списке подсказок
   if (!settings.stores.includes(draft.store)) {
@@ -322,11 +550,15 @@ async function saveVisit() {
   await putVisit(draft);
   draft = null;
   nav('home');
-  toast('Визит сохранён. В конце дня нажмите «Отправить отчёт»');
+  toast(wasSent
+    ? 'Визит обновлён — попадёт в следующий отчёт'
+    : 'Визит сохранён. В конце дня нажмите «Отправить отчёт»');
 }
 
 // ============================================================
-// Отчёт: CSV для Excel + фото, упакованные в один ZIP
+// Отчёт: CSV для Excel + фото.
+// Отправка: сами файлы через «Поделиться» (Android/iPhone);
+// запасной вариант — один ZIP в загрузки (компьютер).
 // ============================================================
 
 // --- ZIP без сжатия (фото уже сжаты в JPEG) ---
@@ -399,20 +631,69 @@ function csvEscape(v) {
   return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
+// Каждый пункт чек-листа превращается в одну или несколько колонок CSV
+function itemColumns(item) {
+  switch (item.type) {
+    case 'percents': {
+      const cols = item.fields.map(f => ({
+        label: `${f.label}, %`,
+        get: (a) => {
+          const o = a[item.id];
+          return o && o[f.id] !== '' && o[f.id] != null ? o[f.id] : '';
+        },
+      }));
+      cols.push({
+        label: `${item.autoLabel}, %`,
+        get: (a) => {
+          const o = a[item.id];
+          if (!o) return '';
+          const nums = item.fields.map(f => parseFloat(o[f.id])).filter(n => !isNaN(n));
+          if (!nums.length) return '';
+          return String(Math.round((100 - nums.reduce((s, n) => s + n, 0)) * 10) / 10);
+        },
+      });
+      return cols;
+    }
+    case 'checkgroup':
+      return item.items.map(sub => ({
+        label: `${item.label}: ${sub}`,
+        get: (a) => { const o = a[item.id]; return o && o[sub] ? 'Да' : 'Нет'; },
+      }));
+    case 'ratinggroup':
+      return item.items.map(sub => ({
+        label: `${item.label}: ${sub}`,
+        get: (a) => { const o = a[item.id]; return o && o[sub] ? o[sub] : ''; },
+      }));
+    case 'multi':
+      return [{
+        label: item.label,
+        get: (a) => Array.isArray(a[item.id]) ? a[item.id].join(', ') : '',
+      }];
+    default:
+      return [{
+        label: item.label,
+        get: (a) => a[item.id] != null ? a[item.id] : '',
+      }];
+  }
+}
+
+const ALL_COLUMNS = CHECKLIST.flatMap(itemColumns);
+
 function buildCsv(visits, photoNames) {
   const headers = [
     'Сотрудник', 'Точка', 'Начало визита', 'Завершение',
     'Широта', 'Долгота', 'Точность (м)', 'Карта',
-    ...CHECKLIST.map(c => c.label),
+    ...ALL_COLUMNS.map(c => c.label),
     'Фото', 'ID',
   ];
   const lines = [headers.map(csvEscape).join(';')];
   for (const v of visits) {
+    const a = v.answers || {};
     lines.push([
       v.employee, v.store, fmtExcel(v.startedAt), fmtExcel(v.finishedAt),
       v.geo ? v.geo.lat : '', v.geo ? v.geo.lng : '', v.geo ? v.geo.accuracy : '',
       v.geo ? `https://yandex.ru/maps/?pt=${v.geo.lng},${v.geo.lat}&z=17` : '',
-      ...CHECKLIST.map(c => v.answers[c.id] != null ? v.answers[c.id] : ''),
+      ...ALL_COLUMNS.map(c => c.get(a)),
       (photoNames.get(v.id) || []).join(', '),
       v.id,
     ].map(csvEscape).join(';'));
@@ -420,11 +701,11 @@ function buildCsv(visits, photoNames) {
   return '\uFEFF' + lines.join('\r\n');
 }
 
-// --- Сборка отчёта ---
-async function buildReport(visits) {
+// --- Сборка файлов отчёта ---
+async function buildReportParts(visits) {
   const now = new Date();
-  const entries = [];
-  const photoNames = new Map(); // id визита -> имена файлов фото
+  const photos = []; // [{name, u8, date}]
+  const photoNames = new Map();
   const used = new Set();
 
   for (const v of visits) {
@@ -437,21 +718,16 @@ async function buildReport(visits) {
       while (used.has(name)) name = `${prefix}_${i + 1}_${k++}.jpg`;
       used.add(name);
       names.push(name);
-      entries.push({
-        name: `фото/${name}`,
-        data: new Uint8Array(await v.photos[i].blob.arrayBuffer()),
-        date: d,
-      });
+      photos.push({ name, u8: new Uint8Array(await v.photos[i].blob.arrayBuffer()), date: d });
     }
     photoNames.set(v.id, names);
   }
 
-  const csv = buildCsv(visits, photoNames);
-  entries.unshift({ name: 'визиты.csv', data: new TextEncoder().encode(csv), date: now });
-
   const stamp = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}_${pad2(now.getHours())}-${pad2(now.getMinutes())}`;
-  const filename = `RetailCheck_${sanitizeName(settings.employee) || 'отчёт'}_${stamp}.zip`;
-  return { blob: buildZip(entries), filename };
+  const base = `RetailCheck_${sanitizeName(settings.employee) || 'отчёт'}_${stamp}`;
+  const csvU8 = new TextEncoder().encode(buildCsv(visits, photoNames));
+
+  return { csvName: `${base}.csv`, csvU8, photos, zipName: `${base}.zip` };
 }
 
 function downloadBlob(blob, filename) {
@@ -460,6 +736,16 @@ function downloadBlob(blob, filename) {
   a.download = filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+async function tryShare(files) {
+  if (!(navigator.canShare && navigator.canShare({ files }))) return 'unsupported';
+  try {
+    await navigator.share({ files, title: 'Отчёт Retail Check' });
+    return 'ok';
+  } catch (err) {
+    return err && err.name === 'AbortError' ? 'aborted' : 'failed';
+  }
 }
 
 async function shareReport() {
@@ -473,28 +759,40 @@ async function shareReport() {
   }
 
   toast('Готовим отчёт…');
-  const { blob, filename } = await buildReport(unsent);
-  const file = new File([blob], filename, { type: 'application/zip' });
+  const parts = await buildReportParts(unsent);
 
-  let delivered = false;
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], title: 'Отчёт Retail Check' });
-      delivered = true;
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        toast('Отправка отменена');
-        return;
-      }
-      // не получилось поделиться — сохраним файлом
+  // Основной путь: отправить сами файлы (CSV + JPEG) — эти типы Android
+  // разрешает в системном «Поделиться», в отличие от ZIP
+  const files = [
+    new File([parts.csvU8], parts.csvName, { type: 'text/csv' }),
+    ...parts.photos.map(p => new File([p.u8], p.name, { type: 'image/jpeg' })),
+  ];
+
+  let result = await tryShare(files);
+  if (result === 'aborted') {
+    toast('Отправка отменена');
+    return;
+  }
+
+  // Запасной путь: один ZIP (пробуем поделиться, иначе — в загрузки)
+  if (result !== 'ok') {
+    const now = new Date();
+    const zip = buildZip([
+      { name: parts.csvName, data: parts.csvU8, date: now },
+      ...parts.photos.map(p => ({ name: `фото/${p.name}`, data: p.u8, date: p.date })),
+    ]);
+    result = await tryShare([new File([zip], parts.zipName, { type: 'application/zip' })]);
+    if (result === 'aborted') {
+      toast('Отправка отменена');
+      return;
+    }
+    if (result !== 'ok') {
+      downloadBlob(zip, parts.zipName);
+      toast('Отчёт сохранён файлом в загрузки — отправьте его коллегам вручную', 5000);
     }
   }
-  if (!delivered) {
-    downloadBlob(blob, filename);
-    toast('Файл отчёта сохранён в загрузки — отправьте его коллегам вручную', 5000);
-  } else {
-    toast(`Отчёт отправлен: визитов — ${unsent.length}`);
-  }
+
+  if (result === 'ok') toast(`Отчёт отправлен: визитов — ${unsent.length}`);
 
   const when = new Date().toISOString();
   for (const v of unsent) {
