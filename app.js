@@ -49,7 +49,7 @@ const CHECKLIST = [
   { id: 'comment', label: 'Комментарии', type: 'textarea' },
 ];
 
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.2.1';
 const MAX_PHOTOS = 10;
 const PHOTO_MAX_SIDE = 1400;
 const PHOTO_QUALITY = 0.72;
@@ -816,6 +816,7 @@ async function shareReport() {
   $('#sharePhotos').textContent = `🖼 Фото (${parts.photos.length})`;
   $('#sharePhotos').classList.remove('done');
   $('#sharePhotos').classList.toggle('hidden', parts.photos.length === 0);
+  $('#shareZip').classList.toggle('hidden', !ZIP_SHARE_SUPPORTED);
   $('#shareSheet').classList.remove('hidden');
 }
 
@@ -837,6 +838,23 @@ async function markBatchSent(unsent) {
 const csvFileOf = (parts) => new File([parts.csvU8], parts.csvName, { type: 'text/csv' });
 const photoFilesOf = (parts) => parts.photos.map(p => new File([p.u8], p.name, { type: 'image/jpeg' }));
 
+// iPhone разрешает делиться ZIP-архивами, Android — нет
+const ZIP_SHARE_SUPPORTED = (() => {
+  try {
+    return !!(navigator.canShare &&
+      navigator.canShare({ files: [new File([new Blob(['x'])], 'r.zip', { type: 'application/zip' })] }));
+  } catch {
+    return false;
+  }
+})();
+
+function zipOf(parts) {
+  return buildZip([
+    { name: parts.csvName, data: parts.csvU8, date: new Date() },
+    ...parts.photos.map(p => ({ name: `фото/${p.name}`, data: p.u8, date: p.date })),
+  ]);
+}
+
 async function shareAllHandler() {
   const ps = pendingShare;
   if (!ps) return;
@@ -846,12 +864,25 @@ async function shareAllHandler() {
     toast(`Отчёт отправлен: визитов — ${ps.unsent.length}`);
   } else {
     // компьютер или «Поделиться» недоступно — скачиваем одним ZIP
-    const zip = buildZip([
-      { name: ps.parts.csvName, data: ps.parts.csvU8, date: new Date() },
-      ...ps.parts.photos.map(p => ({ name: `фото/${p.name}`, data: p.u8, date: p.date })),
-    ]);
-    downloadBlob(zip, ps.parts.zipName);
+    downloadBlob(zipOf(ps.parts), ps.parts.zipName);
     toast('Отчёт сохранён в загрузки — отправьте его коллегам вручную', 5000);
+  }
+  closeShareSheet();
+  await markBatchSent(ps.unsent);
+  pendingShare = null;
+}
+
+async function shareZipHandler() {
+  const ps = pendingShare;
+  if (!ps) return;
+  const zip = zipOf(ps.parts);
+  const result = await tryShare([new File([zip], ps.parts.zipName, { type: 'application/zip' })]);
+  if (result === 'aborted') return;
+  if (result === 'ok') {
+    toast(`Отчёт отправлен архивом: визитов — ${ps.unsent.length}`);
+  } else {
+    downloadBlob(zip, ps.parts.zipName);
+    toast('Архив сохранён в загрузки', 4000);
   }
   closeShareSheet();
   await markBatchSent(ps.unsent);
@@ -932,6 +963,7 @@ async function main() {
   $('#btnSaveSettings').onclick = saveSettings;
   $('#btnShare').onclick = shareReport;
   $('#shareAll').onclick = shareAllHandler;
+  $('#shareZip').onclick = shareZipHandler;
   $('#shareCsv').onclick = shareCsvHandler;
   $('#sharePhotos').onclick = sharePhotosHandler;
   $('#shareCancel').onclick = () => { closeShareSheet(); pendingShare = null; };
