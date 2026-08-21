@@ -22,7 +22,7 @@ html, body {
   color: var(--text);
   /* Arial — вспомогательный корпоративный шрифт Kastamonu */
   font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
-  font-size: 16px;
+  font-size: 17px;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -157,7 +157,7 @@ html, body {
 
 .list-header h2 { margin: 0; font-size: 1.05rem; }
 
-h2 { font-size: 1.05rem; margin: 22px 0 10px; }
+h2 { font-size: 1.15rem; margin: 24px 0 10px; }
 
 .visit-list {
   list-style: none;
@@ -226,13 +226,14 @@ h2 { font-size: 1.05rem; margin: 22px 0 10px; }
 
 .visit-store {
   font-weight: 600;
+  font-size: 1.05rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .visit-meta {
-  font-size: 0.82rem;
+  font-size: 0.88rem;
   color: var(--muted);
   margin-top: 2px;
 }
@@ -269,7 +270,7 @@ h2 { font-size: 1.05rem; margin: 22px 0 10px; }
 
 .field label {
   display: block;
-  font-size: 0.88rem;
+  font-size: 0.95rem;
   font-weight: 600;
   margin-bottom: 6px;
   color: var(--muted);
@@ -277,11 +278,11 @@ h2 { font-size: 1.05rem; margin: 22px 0 10px; }
 
 input, textarea, select {
   width: 100%;
-  padding: 12px 14px;
+  padding: 13px 14px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--card);
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-family: inherit;
   color: var(--text);
 }
@@ -292,7 +293,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 .hint {
-  font-size: 0.8rem;
+  font-size: 0.86rem;
   color: var(--muted);
   margin: 6px 0 0;
 }
@@ -307,7 +308,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 .geo-chip {
-  font-size: 0.88rem;
+  font-size: 0.95rem;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -329,8 +330,8 @@ input:focus, textarea:focus, select:focus {
 .check-item > label {
   display: block;
   font-weight: 600;
-  font-size: 0.95rem;
-  margin-bottom: 8px;
+  font-size: 1.08rem;
+  margin-bottom: 10px;
 }
 
 .yesno {
@@ -344,7 +345,7 @@ input:focus, textarea:focus, select:focus {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg);
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   cursor: pointer;
   color: var(--text);
 }
@@ -379,7 +380,7 @@ input:focus, textarea:focus, select:focus {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg);
-  font-size: 1rem;
+  font-size: 1.05rem;
   color: var(--text);
   cursor: pointer;
   text-align: left;
@@ -402,7 +403,7 @@ input:focus, textarea:focus, select:focus {
   gap: 12px;
   padding: 11px 14px;
   border-bottom: 1px solid var(--border);
-  font-size: 0.95rem;
+  font-size: 1.02rem;
   cursor: pointer;
 }
 
@@ -416,8 +417,8 @@ input:focus, textarea:focus, select:focus {
 
 .multi-opt input[type="checkbox"],
 .check-opt input[type="checkbox"] {
-  width: 20px;
-  height: 20px;
+  width: 23px;
+  height: 23px;
   flex: none;
   accent-color: var(--accent);
 }
@@ -450,9 +451,9 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 9px 0;
+  padding: 10px 0;
   margin-bottom: 0;
-  font-size: 0.95rem;
+  font-size: 1.02rem;
   font-weight: 400;
   color: var(--text);
   cursor: pointer;
@@ -464,16 +465,16 @@ input:focus, textarea:focus, select:focus {
 
 .rate-name {
   display: block;
-  font-size: 0.9rem;
-  margin-bottom: 6px;
+  font-size: 1rem;
+  margin-bottom: 7px;
 }
 
-.seg { display: flex; gap: 6px; }
+.seg { display: flex; gap: 4px; }
 
 .seg button {
   flex: 1;
-  padding: 9px 2px;
-  font-size: 0.8rem;
+  padding: 12px 1px;
+  font-size: 0.83rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg);
