@@ -23,22 +23,19 @@ const CHECKLIST = [
     placeholder: 'Какие бренды представлены рядом' },
   { id: 'collections', label: 'Коллекции Кастамону', type: 'multi',
     options: ['Amber', 'Black', 'Blue', 'Cherry', 'Color block', 'CraftCore',
-              'Emerald', 'Green', 'Grey', 'Lagoon', 'LaMoena', 'Malva',
-              'Marsala', 'Nanoclick', 'Orange', 'Prime', 'Red', 'River',
-              'Royce', 'Ruby', 'Stonex', 'Sunfloor', 'Ultramarine', 'Violet',
-              'Wings', 'Yellow'],
+              'Emerald', 'Grey', 'Ideal', 'Lagoon', 'LaMoena', 'Malva',
+              'Marsala', 'Nanoclick', 'Prime', 'Red', 'River', 'Royce',
+              'Ruby', 'Stonex', 'Sunfloor', 'Ultramarine', 'Violet', 'Wings'],
     highlight: ['CraftCore', 'LaMoena'] },
-  { id: 'stands', label: 'Стенды', type: 'checkgroup',
-    items: ['Кастамону', 'LaMoena', 'CraftCore'] },
   { id: 'awareness', label: 'Знание брендов', type: 'ratinggroup',
     items: ['Кастамону', 'LaMoena', 'CraftCore'],
     options: ['Не знают', 'Знают плохо', 'Знают хорошо'] },
   { id: 'priceTags', label: 'Ценники на всех позициях', type: 'yesno' },
-  { id: 'pos', label: 'POS-материалы (каталоги, буклеты)', type: 'yesno' },
+  { id: 'pos', label: 'Наклейки', type: 'yesno' },
   { id: 'comment', label: 'Комментарии', type: 'textarea' },
 ];
 
-const APP_VERSION = '3.0.0';
+const APP_VERSION = '3.1.0';
 const MAX_PHOTOS = 50;
 const PHOTO_MAX_SIDE = 1400;
 const PHOTO_QUALITY = 0.72;
