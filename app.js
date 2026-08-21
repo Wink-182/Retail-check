@@ -35,7 +35,7 @@ const CHECKLIST = [
   { id: 'comment', label: 'Комментарии', type: 'textarea' },
 ];
 
-const APP_VERSION = '3.3.0';
+const APP_VERSION = '3.3.1';
 const MAX_PHOTOS = 50;
 const PHOTO_MAX_SIDE = 1400;
 const PHOTO_QUALITY = 0.72;
@@ -164,7 +164,7 @@ async function renderHome() {
   for (const [city, cityVisits] of byCity) {
     const header = document.createElement('li');
     header.className = 'city-header';
-    header.innerHTML = '<span class="city-name"></span><span class="count"></span>';
+    header.innerHTML = '<span class="city-pin">📍</span><span class="city-name"></span><span class="count"></span>';
     header.querySelector('.city-name').textContent = city;
     header.querySelector('.count').textContent = cityVisits.length;
     list.appendChild(header);
