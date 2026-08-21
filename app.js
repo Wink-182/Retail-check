@@ -38,8 +38,8 @@ const CHECKLIST = [
   { id: 'comment', label: 'Комментарии', type: 'textarea' },
 ];
 
-const APP_VERSION = '2.4.0';
-const MAX_PHOTOS = 10;
+const APP_VERSION = '2.5.0';
+const MAX_PHOTOS = 50;
 const PHOTO_MAX_SIDE = 1400;
 const PHOTO_QUALITY = 0.72;
 
@@ -147,9 +147,6 @@ async function renderHome() {
   $('#emptyHint').classList.toggle('hidden', visits.length > 0);
   $('#setupHint').classList.toggle('hidden', !!settings.employee);
   $('#offlineBanner').classList.toggle('hidden', navigator.onLine);
-
-  const sent = visits.filter(v => v.status === 'sent').length;
-  $('#btnClearSent').classList.toggle('hidden', sent === 0);
 
   const STATUS_LABEL = { queued: 'Не отправлен', sent: 'Отправлен' };
 
@@ -479,24 +476,24 @@ function openVisit(v) {
 // при редактировании из дома координаты перезаписывать нельзя
 function renderGeoChip() {
   const chip = $('#geoStatus');
-  const retry = $('#btnGeoRetry');
   if (draft.geo) {
     chip.className = 'geo-chip ok';
-    chip.textContent = `📍 Место зафиксировано (±${draft.geo.accuracy} м)`;
-    retry.classList.add('hidden');
+    const how = draft.geo.source === 'manual'
+      ? 'указано вручную'
+      : `±${draft.geo.accuracy} м`;
+    chip.textContent = `📍 Координаты записаны (${how})`;
   } else {
     chip.className = 'geo-chip fail';
     chip.textContent = '📍 Координаты не записаны';
-    retry.classList.remove('hidden');
   }
 }
 
+// Автоопределение — только при создании визита. При правке визита позже
+// координаты не трогаем: иначе отчёт из дома увёз бы домашний адрес.
 function captureGeo() {
   const chip = $('#geoStatus');
-  const retry = $('#btnGeoRetry');
   chip.className = 'geo-chip';
   chip.textContent = '📍 Определяем местоположение…';
-  retry.classList.add('hidden');
 
   if (!navigator.geolocation) {
     chip.textContent = '📍 Геолокация недоступна';
@@ -509,17 +506,124 @@ function captureGeo() {
         lat: +pos.coords.latitude.toFixed(6),
         lng: +pos.coords.longitude.toFixed(6),
         accuracy: Math.round(pos.coords.accuracy),
+        source: 'gps',
+        capturedAt: new Date().toISOString(),
       };
-      chip.textContent = `📍 Место зафиксировано (±${draft.geo.accuracy} м)`;
-      chip.classList.add('ok');
+      renderGeoChip();
     },
     () => {
-      chip.textContent = '📍 Не удалось определить место';
+      chip.textContent = '📍 Не удалось определить место — нажмите «Изменить»';
       chip.classList.add('fail');
-      retry.classList.remove('hidden');
     },
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
   );
+}
+
+// ---------- Правка координат ----------
+// Понимает «55.75, 37.61», ссылки Яндекс.Карт и Google Карт
+function parseCoords(text) {
+  const t = String(text || '').trim();
+  if (!t) return null;
+
+  const nums = (re, s) => (s.match(re) || []).map(Number);
+
+  // Яндекс: ll=/pt= идут в порядке «долгота,широта»
+  const ya = t.match(/[?&](?:ll|pt|whatshere\[point\])=(-?\d+\.?\d*)[,%]+(?:2C)?(-?\d+\.?\d*)/i);
+  if (ya) return norm(+ya[2], +ya[1]);
+
+  // Google: /@широта,долгота или q=широта,долгота
+  const gg = t.match(/[@=](-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (gg) return norm(+gg[1], +gg[2]);
+
+  // «55,751244 37,618423» — запятая как десятичный разделитель
+  const ru = t.match(/^\s*(-?\d+),(\d+)\s*[,;\s]\s*(-?\d+),(\d+)\s*$/);
+  if (ru) return norm(+`${ru[1]}.${ru[2]}`, +`${ru[3]}.${ru[4]}`);
+
+  const plain = nums(/-?\d+\.?\d*/g, t);
+  if (plain.length >= 2) return norm(plain[0], plain[1]);
+  return null;
+}
+
+function norm(lat, lng) {
+  // если перепутан порядок — широта не бывает больше 90
+  if (Math.abs(lat) > 90 && Math.abs(lng) <= 90) [lat, lng] = [lng, lat];
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat: +lat.toFixed(6), lng: +lng.toFixed(6) };
+}
+
+// Что предложила кнопка «взять текущее» — применяем только по «Сохранить»,
+// чтобы «Отмена» действительно отменяла
+let geoPending = null;
+
+function openGeoSheet() {
+  geoPending = null;
+  $('#geoInput').value = draft.geo ? `${draft.geo.lat}, ${draft.geo.lng}` : '';
+  $('#geoSheet').classList.remove('hidden');
+}
+
+function closeGeoSheet() {
+  geoPending = null;
+  $('#geoSheet').classList.add('hidden');
+}
+
+function geoOpenMap() {
+  const base = 'https://yandex.ru/maps/';
+  const url = draft.geo
+    ? `${base}?ll=${draft.geo.lng},${draft.geo.lat}&z=17&pt=${draft.geo.lng},${draft.geo.lat}`
+    : `${base}?text=${encodeURIComponent([$('#cityInput').value, $('#storeInput').value].filter(Boolean).join(' '))}`;
+  window.open(url, '_blank', 'noopener');
+  toast('Найдите точку, нажмите на неё и скопируйте координаты сюда', 6000);
+}
+
+function geoUseCurrent() {
+  if (!confirm('Записать координаты того места, где вы находитесь сейчас?\n\n' +
+               'Делайте это только в самом магазине — иначе в отчёт попадёт ваше текущее место.')) return;
+  const btn = $('#geoUseCurrent');
+  const reset = () => { btn.disabled = false; btn.textContent = '📍 Взять моё текущее местоположение'; };
+  btn.disabled = true;
+  btn.textContent = '📍 Определяем…';
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      geoPending = {
+        lat: +pos.coords.latitude.toFixed(6),
+        lng: +pos.coords.longitude.toFixed(6),
+        accuracy: Math.round(pos.coords.accuracy),
+        source: 'gps',
+      };
+      $('#geoInput').value = `${geoPending.lat}, ${geoPending.lng}`;
+      reset();
+      toast('Координаты подставлены — нажмите «Сохранить»', 4000);
+    },
+    () => {
+      reset();
+      toast('Не удалось определить местоположение', 4000);
+    },
+    { enableHighAccuracy: true, timeout: 15000 }
+  );
+}
+
+function geoSave() {
+  const raw = $('#geoInput').value.trim();
+  if (!raw) {
+    draft.geo = null;
+    renderGeoChip();
+    closeGeoSheet();
+    toast('Координаты убраны');
+    return;
+  }
+  const parsed = parseCoords(raw);
+  if (!parsed) {
+    toast('Не понял координаты. Нужно «55.751244, 37.618423» или ссылка с карты', 5000);
+    return;
+  }
+  // если поле не правили после «взять текущее» — сохраняем точность от GPS
+  const fromGps = geoPending && geoPending.lat === parsed.lat && geoPending.lng === parsed.lng;
+  draft.geo = fromGps
+    ? { ...geoPending, capturedAt: new Date().toISOString() }
+    : { ...parsed, source: 'manual', capturedAt: new Date().toISOString() };
+  renderGeoChip();
+  closeGeoSheet();
+  toast('Координаты сохранены');
 }
 
 // ---------- Фото ----------
@@ -913,15 +1017,20 @@ function checklistLines(v) {
 
       case 'multi': {
         const val = Array.isArray(a[item.id]) ? a[item.id] : [];
-        if (val.length) lines.push(`${B(item.label + ':')} ${htmlEscape(val.join(', '))}`);
+        if (val.length) {
+          lines.push(B(item.label + ':'));
+          // порядок как в списке — так проще пробегать глазами
+          item.options.filter(o => val.includes(o))
+            .forEach(o => lines.push(`• ${htmlEscape(o)}`));
+        }
         break;
       }
 
       case 'checkgroup': {
         const obj = a[item.id];
         if (obj && Object.keys(obj).length) {
-          const marks = item.items.map(sub => `${obj[sub] ? '✅' : '❌'} ${htmlEscape(sub)}`);
-          lines.push(`${B(item.label + ':')} ${marks.join(' · ')}`);
+          lines.push(B(item.label + ':'));
+          item.items.forEach(sub => lines.push(`${obj[sub] ? '✅' : '❌'} ${htmlEscape(sub)}`));
         }
         break;
       }
@@ -931,7 +1040,7 @@ function checklistLines(v) {
         const filled = obj ? item.items.filter(sub => obj[sub]) : [];
         if (filled.length) {
           lines.push(B(item.label + ':'));
-          filled.forEach(sub => lines.push(`   • ${htmlEscape(sub)} — ${htmlEscape(obj[sub])}`));
+          filled.forEach(sub => lines.push(`• ${htmlEscape(sub)} — ${htmlEscape(obj[sub])}`));
         }
         break;
       }
@@ -964,10 +1073,14 @@ function checklistLines(v) {
 
 // Готовое сообщение по визиту — то, что придёт в чат
 function visitReportText(v) {
-  const head = [`🏪 ${B(v.store || 'Точка без названия')}`];
-  if (v.city)      head.push(`📍 ${htmlEscape(v.city)}`);
-  if (v.legalName) head.push(`🏢 ${htmlEscape(v.legalName)}`);
-  if (v.phone)     head.push(`☎️ ${htmlEscape(v.phone)}`);
+  const head = [];
+  if (v.city) head.push(`📍 ${htmlEscape(v.city)}`);
+
+  // магазин, юрлицо и телефон — один блок под одной пиктограммой
+  head.push(`🏪 ${B(v.store || 'Точка без названия')}`);
+  if (v.legalName) head.push(htmlEscape(v.legalName));
+  if (v.phone)     head.push(htmlEscape(v.phone));
+
   head.push(`👤 ${htmlEscape(v.employee || 'без имени')} · ${fmtExcel(v.startedAt)}`);
   if (v.geo) {
     head.push(`🗺 <a href="https://yandex.ru/maps/?pt=${v.geo.lng},${v.geo.lat}&amp;z=17">Точка на карте</a>`);
@@ -1013,6 +1126,9 @@ async function sendVisitToTelegram(v) {
 // Кнопка ✈️ на визите
 async function sendVisit(v, btn) {
   if (!tgConfigured()) return shareSingleVisit(v);
+  const what = v.store || 'визит без названия';
+  const again = v.status === 'sent' ? '\nЭтот визит уже отправляли — придёт ещё раз.' : '';
+  if (!confirm(`Отправить отчёт в Telegram?\n\n${what}${again}`)) return;
   if (!navigator.onLine) {
     toast('Нет сети — отправьте, когда появится связь', 4000);
     return;
@@ -1177,18 +1293,9 @@ async function sharePhotosHandler() {
   }
 }
 
-async function clearSent() {
-  const sent = (await getAllVisits()).filter(v => v.status === 'sent');
-  if (!sent.length) return;
-  if (!confirm(`Удалить отправленные визиты (${sent.length})? Они уже есть в отчётах.`)) return;
-  for (const v of sent) await deleteVisit(v.id);
-  renderHome();
-}
-
 // ---------- Настройки ----------
 function renderSettings() {
   $('#employeeInput').value = settings.employee;
-  $('#storesInput').value = settings.stores.join('\n');
   $('#tgTokenInput').value = settings.tgToken;
   $('#tgChatInput').value = settings.tgChat;
   $('#versionInfo').textContent = `Retail Check v${APP_VERSION}`;
@@ -1196,7 +1303,6 @@ function renderSettings() {
 
 function saveSettings() {
   settings.employee = $('#employeeInput').value.trim();
-  settings.stores = $('#storesInput').value.split('\n').map(s => s.trim()).filter(Boolean);
   settings.tgToken = $('#tgTokenInput').value.trim();
   settings.tgChat = $('#tgChatInput').value.trim();
   toast('Настройки сохранены');
@@ -1222,8 +1328,12 @@ async function main() {
   $('#shareSheet').onclick = (e) => {
     if (e.target === $('#shareSheet')) { closeShareSheet(); pendingShare = null; }
   };
-  $('#btnClearSent').onclick = clearSent;
-  $('#btnGeoRetry').onclick = captureGeo;
+  $('#btnGeoEdit').onclick = openGeoSheet;
+  $('#geoOpenMap').onclick = geoOpenMap;
+  $('#geoUseCurrent').onclick = geoUseCurrent;
+  $('#geoSave').onclick = geoSave;
+  $('#geoCancel').onclick = closeGeoSheet;
+  $('#geoSheet').onclick = (e) => { if (e.target === $('#geoSheet')) closeGeoSheet(); };
   $('#btnBack').onclick = () => {
     if (currentView === 'visit' && draft &&
         !confirm('Выйти без сохранения визита?')) return;

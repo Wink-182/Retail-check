@@ -28,10 +28,7 @@
 
       <button id="btnNewVisit" class="big-btn accent">➕ Новый визит</button>
 
-      <div class="list-header">
-        <h2>Мои визиты</h2>
-        <button id="btnClearSent" class="small-btn hidden">🗑 Очистить отправленные</button>
-      </div>
+      <h2>Мои визиты</h2>
       <ul id="visitList" class="visit-list"></ul>
       <p id="emptyHint" class="empty-hint hidden">Пока нет визитов. Нажмите «Новый визит», когда придёте в точку.</p>
     </section>
@@ -64,7 +61,7 @@
 
       <div class="geo-row">
         <span id="geoStatus" class="geo-chip">📍 Определяем местоположение…</span>
-        <button id="btnGeoRetry" class="small-btn hidden">Повторить</button>
+        <button id="btnGeoEdit" class="small-btn">Изменить</button>
       </div>
 
       <h2>Чек-лист</h2>
@@ -92,11 +89,6 @@
         <label for="employeeInput">Ваше имя</label>
         <input id="employeeInput" placeholder="Иван Петров" autocomplete="name">
       </div>
-      <div class="field">
-        <label for="storesInput">Список точек (по одной на строку)</label>
-        <textarea id="storesInput" rows="8" placeholder="Леруа Мерлен, Ленина 10&#10;Стройдвор, Мира 5"></textarea>
-      </div>
-
       <h2>Отправка в Telegram</h2>
       <p class="hint">Заполните, чтобы отчёт уходил в чат одним нажатием, без меню «Поделиться». Как получить токен и ID — в инструкции (README).</p>
       <div class="field">
@@ -133,6 +125,23 @@
       <button id="shareCsv" class="sheet-btn">📄 Таблица CSV</button>
       <button id="sharePhotos" class="sheet-btn">🖼 Фото</button>
       <button id="shareCancel" class="sheet-btn cancel">Отмена</button>
+    </div>
+  </div>
+
+  <!-- ПРАВКА КООРДИНАТ -->
+  <div id="geoSheet" class="sheet-overlay hidden">
+    <div class="sheet">
+      <h3>Координаты точки</h3>
+      <p class="hint">Записываются один раз — когда вы создаёте визит в магазине. При правке отчёта позже они сами не меняются.</p>
+      <div class="field">
+        <label for="geoInput">Широта и долгота</label>
+        <input id="geoInput" placeholder="55.751244, 37.618423" inputmode="decimal" autocomplete="off" spellcheck="false">
+        <p class="hint">Можно вставить ссылку из Яндекс.Карт или Google Карт — координаты вытащатся сами. Очистите поле, чтобы убрать координаты.</p>
+      </div>
+      <button id="geoOpenMap" class="sheet-btn">🗺 Найти точку на карте</button>
+      <button id="geoUseCurrent" class="sheet-btn">📍 Взять моё текущее местоположение</button>
+      <button id="geoSave" class="sheet-btn primary">✓ Сохранить координаты</button>
+      <button id="geoCancel" class="sheet-btn cancel">Отмена</button>
     </div>
   </div>
 
