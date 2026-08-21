@@ -35,7 +35,7 @@ const CHECKLIST = [
   { id: 'comment', label: 'Комментарии', type: 'textarea' },
 ];
 
-const APP_VERSION = '3.2.0';
+const APP_VERSION = '3.3.0';
 const MAX_PHOTOS = 50;
 const PHOTO_MAX_SIDE = 1400;
 const PHOTO_QUALITY = 0.72;
@@ -153,38 +153,57 @@ async function renderHome() {
   $('#setupHint').classList.toggle('hidden', !!settings.employee);
   $('#offlineBanner').classList.toggle('hidden', navigator.onLine);
 
+  // города идут в порядке самого свежего визита в каждом
+  const byCity = new Map();
   for (const v of visits) {
-    const li = document.createElement('li');
-    const photos = v.photos ? v.photos.length : 0;
-    const status = v.status === 'sent'
-      ? `<span class="status sent">Отправлен</span>` +
-        (v.edited ? '<span class="status edited">отредактирован</span>' : '')
-      : '<span class="status queued">Не отправлен</span>';
-
-    li.innerHTML = `
-      <div class="visit-main">
-        <div class="visit-store"></div>
-        <div class="visit-meta">${fmtDate(v.startedAt)} · 📷 ${photos}</div>
-        <div class="visit-badges">${status}</div>
-      </div>
-      <div class="visit-actions">
-        <button class="act act-edit" aria-label="Изменить" title="Изменить">✎</button>
-        <button class="act act-tg" aria-label="Отправить в Telegram" title="Отправить в Telegram">${TG_ICON}</button>
-        <button class="act act-mail" aria-label="Отправить письмом" title="Отправить письмом (PDF)">✉️</button>
-        <button class="act act-del" aria-label="Удалить" title="Удалить">🗑</button>
-      </div>`;
-    li.querySelector('.visit-store').textContent = visitTitle(v);
-    li.querySelector('.visit-main').onclick = () => openVisit(v);
-    li.querySelector('.act-edit').onclick = () => openVisit(v);
-    li.querySelector('.act-tg').onclick = (e) => sendVisit(v, e.currentTarget);
-    li.querySelector('.act-mail').onclick = (e) => shareVisitPdf(v, e.currentTarget);
-    li.querySelector('.act-del').onclick = async () => {
-      if (v.status !== 'sent' && !confirm('Визит ещё не отправлен. Удалить безвозвратно?')) return;
-      await deleteVisit(v.id);
-      renderHome();
-    };
-    list.appendChild(li);
+    const city = v.city || 'Без города';
+    if (!byCity.has(city)) byCity.set(city, []);
+    byCity.get(city).push(v);
   }
+
+  for (const [city, cityVisits] of byCity) {
+    const header = document.createElement('li');
+    header.className = 'city-header';
+    header.innerHTML = '<span class="city-name"></span><span class="count"></span>';
+    header.querySelector('.city-name').textContent = city;
+    header.querySelector('.count').textContent = cityVisits.length;
+    list.appendChild(header);
+
+    for (const v of cityVisits) list.appendChild(visitRow(v));
+  }
+}
+
+function visitRow(v) {
+  const li = document.createElement('li');
+  const photos = v.photos ? v.photos.length : 0;
+  const status = v.status === 'sent'
+    ? '<span class="status sent">Отправлен</span>' +
+      (v.edited ? '<span class="status edited">отредактирован</span>' : '')
+    : '<span class="status queued">Не отправлен</span>';
+
+  li.innerHTML = `
+    <div class="visit-main">
+      <div class="visit-store"></div>
+      <div class="visit-meta">${fmtDate(v.startedAt)} · 📷 ${photos}</div>
+      <div class="visit-badges">${status}</div>
+    </div>
+    <div class="visit-actions">
+      <button class="act act-edit" aria-label="Изменить" title="Изменить">✎</button>
+      <button class="act act-tg" aria-label="Отправить в Telegram" title="Отправить в Telegram">${TG_ICON}</button>
+      <button class="act act-mail" aria-label="Отправить письмом" title="Отправить письмом (PDF)">✉️</button>
+      <button class="act act-del" aria-label="Удалить" title="Удалить">🗑</button>
+    </div>`;
+  li.querySelector('.visit-store').textContent = visitTitle(v);
+  li.querySelector('.visit-main').onclick = () => openVisit(v);
+  li.querySelector('.act-edit').onclick = () => openVisit(v);
+  li.querySelector('.act-tg').onclick = (e) => sendVisit(v, e.currentTarget);
+  li.querySelector('.act-mail').onclick = (e) => shareVisitPdf(v, e.currentTarget);
+  li.querySelector('.act-del').onclick = async () => {
+    if (v.status !== 'sent' && !confirm('Визит ещё не отправлен. Удалить безвозвратно?')) return;
+    await deleteVisit(v.id);
+    renderHome();
+  };
+  return li;
 }
 
 // ---------- Форма визита ----------
