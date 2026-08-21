@@ -28,6 +28,7 @@
 
       <button id="btnNewVisit" class="big-btn">➕ Новый визит</button>
       <button id="btnShare" class="big-btn accent">⇪ Отправить отчёт</button>
+      <button id="btnShareOther" class="link-btn block hidden">Другие способы отправки</button>
 
       <div class="list-header">
         <h2>Мои визиты</h2>
@@ -49,6 +50,17 @@
         <label for="cityInput">Город / населённый пункт</label>
         <input id="cityInput" list="cityList" placeholder="Где находится точка" autocomplete="off">
         <datalist id="cityList"></datalist>
+      </div>
+
+      <div class="field">
+        <label for="legalInput">Название юрлица</label>
+        <input id="legalInput" list="legalList" placeholder="ООО «Ромашка», ИП Иванов" autocomplete="off">
+        <datalist id="legalList"></datalist>
+      </div>
+
+      <div class="field">
+        <label for="phoneInput">Телефон</label>
+        <input id="phoneInput" type="tel" placeholder="+7 900 000-00-00" inputmode="tel" autocomplete="off">
       </div>
 
       <div class="geo-row">
@@ -85,6 +97,23 @@
         <label for="storesInput">Список точек (по одной на строку)</label>
         <textarea id="storesInput" rows="8" placeholder="Леруа Мерлен, Ленина 10&#10;Стройдвор, Мира 5"></textarea>
       </div>
+
+      <h2>Отправка в Telegram</h2>
+      <p class="hint">Заполните, чтобы отчёт уходил в чат одним нажатием, без меню «Поделиться». Как получить токен и ID — в инструкции (README).</p>
+      <div class="field">
+        <label for="tgTokenInput">Токен бота</label>
+        <input id="tgTokenInput" placeholder="123456789:AA…" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="tgChatInput">ID чата</label>
+        <input id="tgChatInput" placeholder="-1001234567890" autocomplete="off" spellcheck="false">
+        <p class="hint">Напишите боту (или добавьте его в группу и напишите там) любое сообщение и нажмите «Определить ID чата».</p>
+      </div>
+      <div class="tg-actions">
+        <button id="btnTgDetect" class="small-btn">🔎 Определить ID чата</button>
+        <button id="btnTgTest" class="small-btn">✓ Проверить связь</button>
+      </div>
+
       <button id="btnSaveSettings" class="big-btn accent">Сохранить настройки</button>
       <p class="hint center" id="versionInfo"></p>
     </section>
@@ -96,6 +125,7 @@
     <div class="sheet">
       <h3>Как отправить отчёт?</h3>
       <p class="hint">Для Teams и OneDrive подойдёт «всё сразу». Почтовые приложения не принимают таблицу и фото одним набором — для почты отправьте их по очереди, двумя письмами.</p>
+      <button id="shareTg" class="sheet-btn hidden">✈️ В Telegram — сразу в чат</button>
       <button id="shareAll" class="sheet-btn">📦 Всё сразу: таблица + фото</button>
       <button id="shareZip" class="sheet-btn hidden">🗜 Одним архивом (ZIP) — удобно для почты</button>
       <button id="shareCsv" class="sheet-btn">📄 Таблица CSV</button>

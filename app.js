@@ -15,7 +15,6 @@
 //   text, textarea — свободный ввод
 // ============================================================
 const CHECKLIST = [
-  { id: 'clients',  label: 'Кол-во клиентов', type: 'number' },
   { id: 'segment',  label: 'Сегмент магазина', type: 'select',
     options: ['Бюджет', 'Средний', 'Средний +', 'Премиум'] },
   { id: 'assortment', label: 'Ассортимент, %', type: 'percents',
@@ -26,10 +25,8 @@ const CHECKLIST = [
     autoLabel: 'Другое' },
   { id: 'sales', label: 'Продажи', type: 'select',
     options: ['Ниже прошлого года', 'Так же', 'Выше прошлого года'] },
-  { id: 'competitors', label: 'Конкуренты', type: 'multi',
-    options: ['AGT', 'Alpine Floor', 'Classen', 'Egger', 'Ever', 'Kronopol',
-              'Kronospan', 'Kronostar', 'Kronotex', 'Quick-Step', 'Tarkett',
-              'Unilin', 'Woodstyle'] },
+  { id: 'competitors', label: 'Конкуренты', type: 'textarea',
+    placeholder: 'Какие бренды представлены рядом' },
   { id: 'collections', label: 'Коллекции Кастамону', type: 'multi',
     options: ['Amber', 'Black', 'Blue', 'Cherry', 'Color block', 'CraftCore',
               'Emerald', 'Green', 'Grey', 'Lagoon', 'LaMoena', 'Malva',
@@ -39,8 +36,6 @@ const CHECKLIST = [
     highlight: ['CraftCore', 'LaMoena'] },
   { id: 'stands', label: 'Стенды', type: 'checkgroup',
     items: ['Кастамону', 'LaMoena', 'CraftCore'] },
-  { id: 'communication', label: 'Коммуникация', type: 'multi',
-    options: ['Интернет', 'Сайт', 'Соцсети', 'Сарафанное радио', 'Другое'] },
   { id: 'awareness', label: 'Знание брендов', type: 'ratinggroup',
     items: ['Кастамону', 'LaMoena', 'CraftCore'],
     options: ['Не знают', 'Знают плохо', 'Знают хорошо'] },
@@ -49,7 +44,7 @@ const CHECKLIST = [
   { id: 'comment', label: 'Комментарии', type: 'textarea' },
 ];
 
-const APP_VERSION = '2.2.1';
+const APP_VERSION = '2.3.0';
 const MAX_PHOTOS = 10;
 const PHOTO_MAX_SIDE = 1400;
 const PHOTO_QUALITY = 0.72;
@@ -64,6 +59,12 @@ const settings = {
   set cities(v)     { localStorage.setItem('rc.cities', JSON.stringify(v)); },
   get lastCity()    { return localStorage.getItem('rc.lastCity') || ''; },
   set lastCity(v)   { localStorage.setItem('rc.lastCity', v); },
+  get legals()      { try { return JSON.parse(localStorage.getItem('rc.legals')) || []; } catch { return []; } },
+  set legals(v)     { localStorage.setItem('rc.legals', JSON.stringify(v)); },
+  get tgToken()     { return localStorage.getItem('rc.tgToken') || ''; },
+  set tgToken(v)    { localStorage.setItem('rc.tgToken', v); },
+  get tgChat()      { return localStorage.getItem('rc.tgChat') || ''; },
+  set tgChat(v)     { localStorage.setItem('rc.tgChat', v); },
 };
 
 // ---------- IndexedDB ----------
@@ -155,7 +156,12 @@ async function renderHome() {
 
   const unsent = visits.filter(v => v.status === 'queued').length;
   const sent = visits.length - unsent;
-  $('#btnShare').textContent = unsent ? `⇪ Отправить отчёт (${unsent})` : '⇪ Отправить отчёт';
+  const count = unsent ? ` (${unsent})` : '';
+  // если Telegram настроен — отправляем одним нажатием, прямо в чат
+  $('#btnShare').textContent = tgConfigured()
+    ? `✈️ Отправить в Telegram${count}`
+    : `⇪ Отправить отчёт${count}`;
+  $('#btnShareOther').classList.toggle('hidden', !tgConfigured());
   $('#btnClearSent').classList.toggle('hidden', sent === 0);
 
   const STATUS_LABEL = { queued: 'Не отправлен', sent: 'Отправлен' };
@@ -216,6 +222,8 @@ function newDraft() {
     employee: settings.employee,
     store: '',
     city: '',
+    legalName: '',
+    phone: '',
     startedAt: new Date().toISOString(),
     geo: null,
     answers: {},
@@ -227,6 +235,13 @@ function newDraft() {
 function ensureObj(id) {
   if (!draft.answers[id]) draft.answers[id] = {};
   return draft.answers[id];
+}
+
+// Вопрос мог раньше быть списком с галочками (например, конкуренты) —
+// показываем сохранённые варианты как текст, чтобы старые визиты открывались
+function asText(value) {
+  if (value == null) return '';
+  return Array.isArray(value) ? value.join(', ') : String(value);
 }
 
 function buildChecklistUI() {
@@ -404,7 +419,8 @@ function buildChecklistUI() {
       case 'textarea': {
         const ta = document.createElement('textarea');
         ta.rows = 3;
-        if (a[item.id]) ta.value = a[item.id];
+        if (item.placeholder) ta.placeholder = item.placeholder;
+        ta.value = asText(a[item.id]);
         ta.oninput = () => { a[item.id] = ta.value; };
         div.appendChild(ta);
         break;
@@ -413,7 +429,8 @@ function buildChecklistUI() {
       default: { // number, text
         const inp = document.createElement('input');
         if (item.type === 'number') { inp.type = 'number'; inp.inputMode = 'numeric'; }
-        if (a[item.id] != null) inp.value = a[item.id];
+        if (item.placeholder) inp.placeholder = item.placeholder;
+        inp.value = asText(a[item.id]);
         inp.oninput = () => { a[item.id] = inp.value; };
         div.appendChild(inp);
       }
@@ -423,8 +440,10 @@ function buildChecklistUI() {
 }
 
 function fillStoreDatalist() {
-  $('#storeList').innerHTML = settings.stores.map(s => `<option value="${s.replace(/"/g, '&quot;')}">`).join('');
-  $('#cityList').innerHTML = settings.cities.map(s => `<option value="${s.replace(/"/g, '&quot;')}">`).join('');
+  const opts = (list) => list.map(s => `<option value="${s.replace(/"/g, '&quot;')}">`).join('');
+  $('#storeList').innerHTML = opts(settings.stores);
+  $('#cityList').innerHTML = opts(settings.cities);
+  $('#legalList').innerHTML = opts(settings.legals);
 }
 
 function startVisit() {
@@ -436,6 +455,8 @@ function startVisit() {
   newDraft();
   $('#storeInput').value = '';
   $('#cityInput').value = settings.lastCity; // обычно за день обходят один город
+  $('#legalInput').value = '';
+  $('#phoneInput').value = '';
   fillStoreDatalist();
   buildChecklistUI();
   renderPhotos();
@@ -452,6 +473,8 @@ function openVisit(v) {
   };
   $('#storeInput').value = v.store || '';
   $('#cityInput').value = v.city || '';
+  $('#legalInput').value = v.legalName || '';
+  $('#phoneInput').value = v.phone || '';
   fillStoreDatalist();
   buildChecklistUI();
   renderPhotos();
@@ -564,32 +587,30 @@ function renderPhotos() {
 }
 
 // ---------- Сохранение визита ----------
+// Ничего не требуем заполнять: незаполненные поля просто останутся пустыми
+// в отчёте, а визит всегда можно открыть и дополнить позже.
 async function saveVisit() {
   draft.store = $('#storeInput').value.trim();
   draft.city = $('#cityInput').value.trim();
-  if (!draft.store) {
-    toast('Укажите название точки');
-    $('#storeInput').focus();
-    return;
-  }
-  if (!draft.city) {
-    toast('Укажите город');
-    $('#cityInput').focus();
-    return;
-  }
+  draft.legalName = $('#legalInput').value.trim();
+  draft.phone = $('#phoneInput').value.trim();
+
   const wasSent = draft.status === 'sent';
   if (!draft.finishedAt) draft.finishedAt = new Date().toISOString();
   else draft.updatedAt = new Date().toISOString();
   draft.status = 'queued';
 
-  // запоминаем точку и город в списках подсказок
-  if (!settings.stores.includes(draft.store)) {
+  // запоминаем точку, город и юрлицо в списках подсказок
+  if (draft.store && !settings.stores.includes(draft.store)) {
     settings.stores = [...settings.stores, draft.store];
   }
-  if (!settings.cities.includes(draft.city)) {
+  if (draft.city && !settings.cities.includes(draft.city)) {
     settings.cities = [...settings.cities, draft.city];
   }
-  settings.lastCity = draft.city;
+  if (draft.legalName && !settings.legals.includes(draft.legalName)) {
+    settings.legals = [...settings.legals, draft.legalName];
+  }
+  if (draft.city) settings.lastCity = draft.city;
 
   await putVisit(draft);
   draft = null;
@@ -714,10 +735,7 @@ function itemColumns(item) {
         get: (a) => Array.isArray(a[item.id]) ? a[item.id].join(', ') : '',
       }];
     default:
-      return [{
-        label: item.label,
-        get: (a) => a[item.id] != null ? a[item.id] : '',
-      }];
+      return [{ label: item.label, get: (a) => asText(a[item.id]) }];
   }
 }
 
@@ -725,7 +743,8 @@ const ALL_COLUMNS = CHECKLIST.flatMap(itemColumns);
 
 function buildCsv(visits, photoNames) {
   const headers = [
-    'Сотрудник', 'Город', 'Точка', 'Начало визита', 'Завершение',
+    'Сотрудник', 'Город', 'Точка', 'Юрлицо', 'Телефон',
+    'Начало визита', 'Завершение',
     'Широта', 'Долгота', 'Точность (м)', 'Карта',
     ...ALL_COLUMNS.map(c => c.label),
     'Фото', 'ID',
@@ -734,7 +753,8 @@ function buildCsv(visits, photoNames) {
   for (const v of visits) {
     const a = v.answers || {};
     lines.push([
-      v.employee, v.city || '', v.store, fmtExcel(v.startedAt), fmtExcel(v.finishedAt),
+      v.employee, v.city || '', v.store, v.legalName || '', v.phone || '',
+      fmtExcel(v.startedAt), fmtExcel(v.finishedAt),
       v.geo ? v.geo.lat : '', v.geo ? v.geo.lng : '', v.geo ? v.geo.accuracy : '',
       v.geo ? `https://yandex.ru/maps/?pt=${v.geo.lng},${v.geo.lat}&z=17` : '',
       ...ALL_COLUMNS.map(c => c.get(a)),
@@ -754,7 +774,7 @@ async function buildReportParts(visits) {
 
   for (const v of visits) {
     const d = new Date(v.startedAt);
-    const place = [sanitizeName(v.city), sanitizeName(v.store)].filter(Boolean).join('_');
+    const place = [sanitizeName(v.city), sanitizeName(v.store)].filter(Boolean).join('_') || 'визит';
     const prefix = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}_${pad2(d.getHours())}-${pad2(d.getMinutes())}_${place}`;
     const names = [];
     for (let i = 0; i < (v.photos || []).length; i++) {
@@ -793,31 +813,194 @@ async function tryShare(files) {
   }
 }
 
+// ============================================================
+// Отправка в Telegram через бота: отчёт уходит прямо в чат,
+// без системного меню «Поделиться» и без ограничений на ZIP.
+// ============================================================
+const TG_MAX_BYTES = 45 * 1024 * 1024; // у Bot API лимит 50 МБ на файл
+
+const tgConfigured = () => !!(settings.tgToken && settings.tgChat);
+
+async function tgCall(method, body) {
+  const token = settings.tgToken.trim();
+  if (!token) throw new Error('Не указан токен бота');
+  let resp;
+  try {
+    resp = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+      method: 'POST',
+      body,
+    });
+  } catch {
+    throw new Error('Нет связи с Telegram — проверьте интернет');
+  }
+  let data = null;
+  try { data = await resp.json(); } catch { /* не-JSON ответ */ }
+
+  // на неверный токен Telegram отвечает 400/404, иногда с пустым телом
+  if (!data) {
+    throw new Error(resp.status === 413
+      ? 'Отчёт слишком большой для Telegram'
+      : 'Неверный токен бота — скопируйте его из @BotFather целиком');
+  }
+  if (!data.ok) {
+    const desc = data.description || `HTTP ${resp.status}`;
+    if (/not found/i.test(desc) && !/chat/i.test(desc)) {
+      throw new Error('Неверный токен бота — скопируйте его из @BotFather целиком');
+    }
+    if (/chat not found/i.test(desc)) throw new Error('Чат не найден — нажмите «Определить ID чата»');
+    if (/blocked|kicked/i.test(desc)) throw new Error('Бот заблокирован в этом чате');
+    if (/too large|entity too large/i.test(desc)) throw new Error('Отчёт слишком большой для Telegram');
+    throw new Error(`Telegram: ${desc}`);
+  }
+  return data.result;
+}
+
+function tgForm(fields) {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(fields)) fd.append(k, v);
+  return fd;
+}
+
+// Находит чат по последнему сообщению, отправленному боту
+async function tgDetectChat() {
+  const btn = $('#btnTgDetect');
+  btn.disabled = true;
+  try {
+    settings.tgToken = $('#tgTokenInput').value.trim();
+    const updates = await tgCall('getUpdates', tgForm({ limit: 20 }));
+    const withChat = updates.filter(u => u.message || u.channel_post).pop();
+    if (!withChat) {
+      toast('Не вижу сообщений. Напишите боту «привет» и нажмите ещё раз', 5000);
+      return;
+    }
+    const chat = (withChat.message || withChat.channel_post).chat;
+    $('#tgChatInput').value = chat.id;
+    settings.tgChat = String(chat.id);
+    const name = chat.title || [chat.first_name, chat.last_name].filter(Boolean).join(' ') || chat.id;
+    toast(`Чат найден: ${name}`, 4000);
+  } catch (e) {
+    toast(e.message, 5000);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function tgTest() {
+  const btn = $('#btnTgTest');
+  btn.disabled = true;
+  try {
+    settings.tgToken = $('#tgTokenInput').value.trim();
+    settings.tgChat = $('#tgChatInput').value.trim();
+    await tgCall('sendMessage', tgForm({
+      chat_id: settings.tgChat,
+      text: `✅ Retail Check на связи. Сотрудник: ${settings.employee || 'не указан'}`,
+    }));
+    toast('Готово — проверьте сообщение в чате', 4000);
+  } catch (e) {
+    toast(e.message, 5000);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function tgCaption(unsent) {
+  const cities = [...new Set(unsent.map(v => v.city).filter(Boolean))];
+  const lines = [
+    '📋 Retail Check — отчёт',
+    `Сотрудник: ${settings.employee || 'не указан'}`,
+    `Визитов: ${unsent.length}`,
+  ];
+  if (cities.length) lines.push(`Города: ${cities.join(', ')}`);
+  lines.push(fmtExcel(new Date().toISOString()));
+  return lines.join('\n');
+}
+
+async function sendReportToTelegram(parts, unsent) {
+  const zip = zipOf(parts);
+  if (zip.size > TG_MAX_BYTES) {
+    throw new Error('Отчёт больше 45 МБ — отправьте его частями через «Всё сразу»');
+  }
+  await tgCall('sendDocument', tgForm({
+    chat_id: settings.tgChat.trim(),
+    document: new File([zip], parts.zipName, { type: 'application/zip' }),
+    caption: tgCaption(unsent),
+  }));
+}
+
 // Меню выбора способа отправки. Почтовые приложения Android не принимают
 // смешанный набор файлов (CSV + JPEG) — поэтому даём отправить по отдельности.
 let pendingShare = null; // { parts, unsent, csvDone, photosDone }
 
-async function shareReport() {
+async function prepareShare() {
   const unsent = (await getAllVisits())
     .filter(v => v.status === 'queued')
     .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
 
   if (!unsent.length) {
     toast('Нет новых визитов для отчёта');
-    return;
+    return null;
   }
-
   toast('Готовим отчёт…');
   const parts = await buildReportParts(unsent);
   pendingShare = { parts, unsent, csvDone: false, photosDone: false };
+  return pendingShare;
+}
 
-  $('#shareCsv').textContent = `📄 Таблица CSV (визитов: ${unsent.length})`;
+// Основная кнопка: с настроенным Telegram отправляет сразу, иначе — меню выбора
+async function shareReport() {
+  if (!tgConfigured()) return openShareSheet();
+
+  const btn = $('#btnShare');
+  const ps = await prepareShare();
+  if (!ps) return;
+
+  btn.disabled = true;
+  btn.textContent = '✈️ Отправляем…';
+  try {
+    await sendReportToTelegram(ps.parts, ps.unsent);
+    toast(`Отчёт ушёл в Telegram: визитов — ${ps.unsent.length}`, 4000);
+    await markBatchSent(ps.unsent);
+    pendingShare = null;
+  } catch (e) {
+    toast(e.message, 6000);
+  } finally {
+    btn.disabled = false;
+    renderHome();
+  }
+}
+
+async function openShareSheet() {
+  const ps = pendingShare && pendingShare.parts ? pendingShare : await prepareShare();
+  if (!ps) return;
+
+  $('#shareTg').classList.toggle('hidden', !tgConfigured());
+  $('#shareCsv').textContent = `📄 Таблица CSV (визитов: ${ps.unsent.length})`;
   $('#shareCsv').classList.remove('done');
-  $('#sharePhotos').textContent = `🖼 Фото (${parts.photos.length})`;
+  $('#sharePhotos').textContent = `🖼 Фото (${ps.parts.photos.length})`;
   $('#sharePhotos').classList.remove('done');
-  $('#sharePhotos').classList.toggle('hidden', parts.photos.length === 0);
+  $('#sharePhotos').classList.toggle('hidden', ps.parts.photos.length === 0);
   $('#shareZip').classList.toggle('hidden', !ZIP_SHARE_SUPPORTED);
   $('#shareSheet').classList.remove('hidden');
+}
+
+async function shareTgHandler() {
+  const ps = pendingShare;
+  if (!ps) return;
+  const btn = $('#shareTg');
+  btn.disabled = true;
+  btn.textContent = '✈️ Отправляем…';
+  try {
+    await sendReportToTelegram(ps.parts, ps.unsent);
+    toast(`Отчёт ушёл в Telegram: визитов — ${ps.unsent.length}`, 4000);
+    closeShareSheet();
+    await markBatchSent(ps.unsent);
+    pendingShare = null;
+  } catch (e) {
+    toast(e.message, 6000);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✈️ В Telegram — сразу в чат';
+  }
 }
 
 function closeShareSheet() {
@@ -943,12 +1126,16 @@ async function clearSent() {
 function renderSettings() {
   $('#employeeInput').value = settings.employee;
   $('#storesInput').value = settings.stores.join('\n');
+  $('#tgTokenInput').value = settings.tgToken;
+  $('#tgChatInput').value = settings.tgChat;
   $('#versionInfo').textContent = `Retail Check v${APP_VERSION}`;
 }
 
 function saveSettings() {
   settings.employee = $('#employeeInput').value.trim();
   settings.stores = $('#storesInput').value.split('\n').map(s => s.trim()).filter(Boolean);
+  settings.tgToken = $('#tgTokenInput').value.trim();
+  settings.tgChat = $('#tgChatInput').value.trim();
   toast('Настройки сохранены');
   nav('home');
 }
@@ -962,6 +1149,10 @@ async function main() {
   $('#btnSettings').onclick = () => nav('settings');
   $('#btnSaveSettings').onclick = saveSettings;
   $('#btnShare').onclick = shareReport;
+  $('#btnShareOther').onclick = openShareSheet;
+  $('#shareTg').onclick = shareTgHandler;
+  $('#btnTgDetect').onclick = tgDetectChat;
+  $('#btnTgTest').onclick = tgTest;
   $('#shareAll').onclick = shareAllHandler;
   $('#shareZip').onclick = shareZipHandler;
   $('#shareCsv').onclick = shareCsvHandler;

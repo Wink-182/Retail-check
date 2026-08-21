@@ -89,6 +89,16 @@ html, body {
   font-size: inherit;
 }
 
+.link-btn.block {
+  display: block;
+  width: 100%;
+  margin: -12px 0 20px;
+  padding: 4px;
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.9rem;
+}
+
 .big-btn {
   display: block;
   width: 100%;
@@ -540,6 +550,27 @@ input:focus, textarea:focus, select:focus {
 }
 
 .sheet-btn:active { transform: scale(0.99); }
+
+.sheet-btn:disabled,
+.small-btn:disabled,
+.big-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+#shareTg {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.tg-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.tg-actions .small-btn { flex: 1; }
 
 .sheet-btn.done {
   border-color: var(--ok);
