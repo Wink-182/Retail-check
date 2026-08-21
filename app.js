@@ -17,12 +17,6 @@
 const CHECKLIST = [
   { id: 'segment',  label: 'Сегмент магазина', type: 'select',
     options: ['Бюджет', 'Средний', 'Средний +', 'Премиум'] },
-  { id: 'assortment', label: 'Ассортимент, %', type: 'percents',
-    fields: [
-      { id: 'laminate', label: 'Ламинат' },
-      { id: 'spc',      label: 'SPC' },
-    ],
-    autoLabel: 'Другое' },
   { id: 'sales', label: 'Продажи', type: 'select',
     options: ['Ниже прошлого года', 'Так же', 'Выше прошлого года'] },
   { id: 'competitors', label: 'Конкуренты', type: 'textarea',
@@ -44,7 +38,7 @@ const CHECKLIST = [
   { id: 'comment', label: 'Комментарии', type: 'textarea' },
 ];
 
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.4.0';
 const MAX_PHOTOS = 10;
 const PHOTO_MAX_SIDE = 1400;
 const PHOTO_QUALITY = 0.72;
@@ -154,14 +148,7 @@ async function renderHome() {
   $('#setupHint').classList.toggle('hidden', !!settings.employee);
   $('#offlineBanner').classList.toggle('hidden', navigator.onLine);
 
-  const unsent = visits.filter(v => v.status === 'queued').length;
-  const sent = visits.length - unsent;
-  const count = unsent ? ` (${unsent})` : '';
-  // если Telegram настроен — отправляем одним нажатием, прямо в чат
-  $('#btnShare').textContent = tgConfigured()
-    ? `✈️ Отправить в Telegram${count}`
-    : `⇪ Отправить отчёт${count}`;
-  $('#btnShareOther').classList.toggle('hidden', !tgConfigured());
+  const sent = visits.filter(v => v.status === 'sent').length;
   $('#btnClearSent').classList.toggle('hidden', sent === 0);
 
   const STATUS_LABEL = { queued: 'Не отправлен', sent: 'Отправлен' };
@@ -193,16 +180,22 @@ async function renderHome() {
       const li = document.createElement('li');
       const photos = v.photos ? v.photos.length : 0;
       li.innerHTML = `
-        <div class="visit-info" title="Открыть и изменить">
+        <div class="visit-main">
           <div class="visit-store"></div>
-          <div class="visit-meta">${fmtDate(v.startedAt)} · 📷 ${photos} · ✎ изменить</div>
+          <div class="visit-meta">${fmtDate(v.startedAt)} · 📷 ${photos}</div>
         </div>
-        <span class="status ${v.status}">${STATUS_LABEL[v.status] || v.status}</span>
-        <button class="visit-del" aria-label="Удалить">🗑</button>`;
+        <div class="visit-actions">
+          <span class="status ${v.status}">${STATUS_LABEL[v.status] || v.status}</span>
+          <button class="act act-edit" aria-label="Изменить" title="Изменить">✎</button>
+          <button class="act act-send" aria-label="Отправить" title="Отправить в Telegram">✈️</button>
+          <button class="act act-del" aria-label="Удалить" title="Удалить">🗑</button>
+        </div>`;
       li.querySelector('.visit-store').textContent = v.store || '(без названия)';
-      li.querySelector('.visit-info').onclick = () => openVisit(v);
-      li.querySelector('.visit-del').onclick = async () => {
-        if (v.status !== 'sent' && !confirm('Визит ещё не попал в отчёт. Удалить безвозвратно?')) return;
+      li.querySelector('.visit-main').onclick = () => openVisit(v);
+      li.querySelector('.act-edit').onclick = () => openVisit(v);
+      li.querySelector('.act-send').onclick = (e) => sendVisit(v, e.currentTarget);
+      li.querySelector('.act-del').onclick = async () => {
+        if (v.status !== 'sent' && !confirm('Визит ещё не отправлен. Удалить безвозвратно?')) return;
         await deleteVisit(v.id);
         renderHome();
       };
@@ -766,7 +759,7 @@ function buildCsv(visits, photoNames) {
 }
 
 // --- Сборка файлов отчёта ---
-async function buildReportParts(visits) {
+async function buildReportParts(visits, { withPhotos = true } = {}) {
   const now = new Date();
   const photos = []; // [{name, u8, date}]
   const photoNames = new Map();
@@ -783,7 +776,9 @@ async function buildReportParts(visits) {
       while (used.has(name)) name = `${prefix}_${i + 1}_${k++}.jpg`;
       used.add(name);
       names.push(name);
-      photos.push({ name, u8: new Uint8Array(await v.photos[i].blob.arrayBuffer()), date: d });
+      if (withPhotos) {
+        photos.push({ name, u8: new Uint8Array(await v.photos[i].blob.arrayBuffer()), date: d });
+      }
     }
     photoNames.set(v.id, names);
   }
@@ -903,103 +898,171 @@ async function tgTest() {
   }
 }
 
-function tgCaption(unsent) {
-  const cities = [...new Set(unsent.map(v => v.city).filter(Boolean))];
-  const lines = [
-    '📋 Retail Check — отчёт',
-    `Сотрудник: ${settings.employee || 'не указан'}`,
-    `Визитов: ${unsent.length}`,
-  ];
-  if (cities.length) lines.push(`Города: ${cities.join(', ')}`);
-  lines.push(fmtExcel(new Date().toISOString()));
-  return lines.join('\n');
+const htmlEscape = (t) => String(t)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const B = (t) => `<b>${htmlEscape(t)}</b>`;
+
+// Ответы чек-листа в виде читаемых строк; пустое пропускаем
+function checklistLines(v) {
+  const a = v.answers || {};
+  const lines = [];
+
+  for (const item of CHECKLIST) {
+    switch (item.type) {
+
+      case 'multi': {
+        const val = Array.isArray(a[item.id]) ? a[item.id] : [];
+        if (val.length) lines.push(`${B(item.label + ':')} ${htmlEscape(val.join(', '))}`);
+        break;
+      }
+
+      case 'checkgroup': {
+        const obj = a[item.id];
+        if (obj && Object.keys(obj).length) {
+          const marks = item.items.map(sub => `${obj[sub] ? '✅' : '❌'} ${htmlEscape(sub)}`);
+          lines.push(`${B(item.label + ':')} ${marks.join(' · ')}`);
+        }
+        break;
+      }
+
+      case 'ratinggroup': {
+        const obj = a[item.id];
+        const filled = obj ? item.items.filter(sub => obj[sub]) : [];
+        if (filled.length) {
+          lines.push(B(item.label + ':'));
+          filled.forEach(sub => lines.push(`   • ${htmlEscape(sub)} — ${htmlEscape(obj[sub])}`));
+        }
+        break;
+      }
+
+      case 'percents': {
+        const obj = a[item.id];
+        const nums = obj ? item.fields.map(f => parseFloat(obj[f.id])).filter(n => !isNaN(n)) : [];
+        if (nums.length) {
+          const parts = item.fields
+            .filter(f => obj[f.id] !== '' && obj[f.id] != null)
+            .map(f => `${htmlEscape(f.label)} ${obj[f.id]}%`);
+          const rest = Math.round((100 - nums.reduce((x, n) => x + n, 0)) * 10) / 10;
+          parts.push(`${htmlEscape(item.autoLabel)} ${rest}%`);
+          lines.push(`${B(item.label + ':')} ${parts.join(' · ')}`);
+        }
+        break;
+      }
+
+      default: {
+        const val = asText(a[item.id]).trim();
+        if (!val) break;
+        lines.push(val.includes('\n')
+          ? `${B(item.label + ':')}\n${htmlEscape(val)}`
+          : `${B(item.label + ':')} ${htmlEscape(val)}`);
+      }
+    }
+  }
+  return lines;
 }
 
-async function sendReportToTelegram(parts, unsent) {
-  const zip = zipOf(parts);
-  if (zip.size > TG_MAX_BYTES) {
-    throw new Error('Отчёт больше 45 МБ — отправьте его частями через «Всё сразу»');
+// Готовое сообщение по визиту — то, что придёт в чат
+function visitReportText(v) {
+  const head = [`🏪 ${B(v.store || 'Точка без названия')}`];
+  if (v.city)      head.push(`📍 ${htmlEscape(v.city)}`);
+  if (v.legalName) head.push(`🏢 ${htmlEscape(v.legalName)}`);
+  if (v.phone)     head.push(`☎️ ${htmlEscape(v.phone)}`);
+  head.push(`👤 ${htmlEscape(v.employee || 'без имени')} · ${fmtExcel(v.startedAt)}`);
+  if (v.geo) {
+    head.push(`🗺 <a href="https://yandex.ru/maps/?pt=${v.geo.lng},${v.geo.lat}&amp;z=17">Точка на карте</a>`);
   }
-  await tgCall('sendDocument', tgForm({
-    chat_id: settings.tgChat.trim(),
-    document: new File([zip], parts.zipName, { type: 'application/zip' }),
-    caption: tgCaption(unsent),
+
+  const body = checklistLines(v);
+  const text = head.join('\n') + (body.length ? '\n\n' + body.join('\n') : '\n\nЧек-лист не заполнен');
+  return text.length > 4000 ? text.slice(0, 3990) + '\n…' : text;
+}
+
+// Фото уходят следом за отчётом: альбомом либо по одному
+async function tgSendPhotos(photos, chatId) {
+  for (let start = 0; start < photos.length; start += 10) {
+    const chunk = photos.slice(start, start + 10);
+    const fd = new FormData();
+    fd.append('chat_id', chatId);
+
+    if (chunk.length === 1) {
+      fd.append('photo', new File([chunk[0].blob], chunk[0].name || 'photo.jpg', { type: 'image/jpeg' }));
+      await tgCall('sendPhoto', fd);
+      continue;
+    }
+    const media = chunk.map((p, i) => {
+      fd.append(`file${i}`, new File([p.blob], p.name || `photo${i}.jpg`, { type: 'image/jpeg' }));
+      return { type: 'photo', media: `attach://file${i}` };
+    });
+    fd.append('media', JSON.stringify(media));
+    await tgCall('sendMediaGroup', fd);
+  }
+}
+
+async function sendVisitToTelegram(v) {
+  const chatId = settings.tgChat.trim();
+  await tgCall('sendMessage', tgForm({
+    chat_id: chatId,
+    text: visitReportText(v),
+    parse_mode: 'HTML',
+    disable_web_page_preview: 'true',
   }));
+  if (v.photos && v.photos.length) await tgSendPhotos(v.photos, chatId);
 }
 
-// Меню выбора способа отправки. Почтовые приложения Android не принимают
-// смешанный набор файлов (CSV + JPEG) — поэтому даём отправить по отдельности.
-let pendingShare = null; // { parts, unsent, csvDone, photosDone }
-
-async function prepareShare() {
-  const unsent = (await getAllVisits())
-    .filter(v => v.status === 'queued')
-    .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-
-  if (!unsent.length) {
-    toast('Нет новых визитов для отчёта');
-    return null;
+// Кнопка ✈️ на визите
+async function sendVisit(v, btn) {
+  if (!tgConfigured()) return shareSingleVisit(v);
+  if (!navigator.onLine) {
+    toast('Нет сети — отправьте, когда появится связь', 4000);
+    return;
   }
-  toast('Готовим отчёт…');
-  const parts = await buildReportParts(unsent);
-  pendingShare = { parts, unsent, csvDone: false, photosDone: false };
-  return pendingShare;
-}
-
-// Основная кнопка: с настроенным Telegram отправляет сразу, иначе — меню выбора
-async function shareReport() {
-  if (!tgConfigured()) return openShareSheet();
-
-  const btn = $('#btnShare');
-  const ps = await prepareShare();
-  if (!ps) return;
-
-  btn.disabled = true;
-  btn.textContent = '✈️ Отправляем…';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
   try {
-    await sendReportToTelegram(ps.parts, ps.unsent);
-    toast(`Отчёт ушёл в Telegram: визитов — ${ps.unsent.length}`, 4000);
-    await markBatchSent(ps.unsent);
-    pendingShare = null;
+    await sendVisitToTelegram(v);
+    v.status = 'sent';
+    v.sentAt = new Date().toISOString();
+    await putVisit(v);
+    toast(`Отправлено: ${v.store || 'визит без названия'}`);
+    renderHome();
   } catch (e) {
     toast(e.message, 6000);
-  } finally {
-    btn.disabled = false;
-    renderHome();
+    if (btn) { btn.disabled = false; btn.textContent = '✈️'; }
   }
 }
 
-async function openShareSheet() {
-  const ps = pendingShare && pendingShare.parts ? pendingShare : await prepareShare();
-  if (!ps) return;
+// Запасной путь, когда Telegram не настроен: отдаём визит через системное
+// меню «Поделиться». Почта на Android не принимает таблицу и фото одним
+// набором — поэтому их можно отправить по отдельности.
+let pendingShare = null; // { parts, visits, csvDone, photosDone }
 
-  $('#shareTg').classList.toggle('hidden', !tgConfigured());
-  $('#shareCsv').textContent = `📄 Таблица CSV (визитов: ${ps.unsent.length})`;
+async function shareSingleVisit(v) {
+  toast('Готовим отчёт…');
+  const parts = await buildReportParts([v]);
+  pendingShare = { parts, visits: [v], csvDone: false, photosDone: false };
+
+  $('#shareCsv').textContent = '📄 Таблица CSV';
   $('#shareCsv').classList.remove('done');
-  $('#sharePhotos').textContent = `🖼 Фото (${ps.parts.photos.length})`;
+  $('#sharePhotos').textContent = `🖼 Фото (${parts.photos.length})`;
   $('#sharePhotos').classList.remove('done');
-  $('#sharePhotos').classList.toggle('hidden', ps.parts.photos.length === 0);
+  $('#sharePhotos').classList.toggle('hidden', parts.photos.length === 0);
   $('#shareZip').classList.toggle('hidden', !ZIP_SHARE_SUPPORTED);
   $('#shareSheet').classList.remove('hidden');
 }
 
-async function shareTgHandler() {
-  const ps = pendingShare;
-  if (!ps) return;
-  const btn = $('#shareTg');
-  btn.disabled = true;
-  btn.textContent = '✈️ Отправляем…';
-  try {
-    await sendReportToTelegram(ps.parts, ps.unsent);
-    toast(`Отчёт ушёл в Telegram: визитов — ${ps.unsent.length}`, 4000);
-    closeShareSheet();
-    await markBatchSent(ps.unsent);
-    pendingShare = null;
-  } catch (e) {
-    toast(e.message, 6000);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '✈️ В Telegram — сразу в чат';
+// Выгрузка общей таблицы по всем визитам — из настроек
+async function exportAllCsv() {
+  const visits = (await getAllVisits()).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  if (!visits.length) {
+    toast('Пока нет визитов');
+    return;
+  }
+  const parts = await buildReportParts(visits, { withPhotos: false });
+  const result = await tryShare([csvFileOf(parts)]);
+  if (result === 'aborted') return;
+  if (result !== 'ok') {
+    downloadBlob(new Blob([parts.csvU8], { type: 'text/csv' }), parts.csvName);
+    toast('Таблица сохранена в загрузки', 4000);
   }
 }
 
@@ -1007,9 +1070,9 @@ function closeShareSheet() {
   $('#shareSheet').classList.add('hidden');
 }
 
-async function markBatchSent(unsent) {
+async function markBatchSent(visits) {
   const when = new Date().toISOString();
-  for (const v of unsent) {
+  for (const v of visits) {
     if (v.status === 'sent') continue;
     v.status = 'sent';
     v.sentAt = when;
@@ -1044,14 +1107,14 @@ async function shareAllHandler() {
   const result = await tryShare([csvFileOf(ps.parts), ...photoFilesOf(ps.parts)]);
   if (result === 'aborted') return;
   if (result === 'ok') {
-    toast(`Отчёт отправлен: визитов — ${ps.unsent.length}`);
+    toast(`Отчёт отправлен`);
   } else {
     // компьютер или «Поделиться» недоступно — скачиваем одним ZIP
     downloadBlob(zipOf(ps.parts), ps.parts.zipName);
     toast('Отчёт сохранён в загрузки — отправьте его коллегам вручную', 5000);
   }
   closeShareSheet();
-  await markBatchSent(ps.unsent);
+  await markBatchSent(ps.visits);
   pendingShare = null;
 }
 
@@ -1062,13 +1125,13 @@ async function shareZipHandler() {
   const result = await tryShare([new File([zip], ps.parts.zipName, { type: 'application/zip' })]);
   if (result === 'aborted') return;
   if (result === 'ok') {
-    toast(`Отчёт отправлен архивом: визитов — ${ps.unsent.length}`);
+    toast(`Отчёт отправлен архивом`);
   } else {
     downloadBlob(zip, ps.parts.zipName);
     toast('Архив сохранён в загрузки', 4000);
   }
   closeShareSheet();
-  await markBatchSent(ps.unsent);
+  await markBatchSent(ps.visits);
   pendingShare = null;
 }
 
@@ -1084,7 +1147,7 @@ async function shareCsvHandler() {
   ps.csvDone = true;
   $('#shareCsv').classList.add('done');
   $('#shareCsv').textContent = '✓ Таблица отправлена';
-  await markBatchSent(ps.unsent); // данные доставлены — визиты считаем отправленными
+  await markBatchSent(ps.visits); // данные доставлены — визиты считаем отправленными
   if (ps.parts.photos.length && !ps.photosDone) {
     toast('Таблица отправлена. Теперь отправьте фото 🖼', 4000);
   } else {
@@ -1148,9 +1211,7 @@ async function main() {
   $('#btnSaveVisit').onclick = saveVisit;
   $('#btnSettings').onclick = () => nav('settings');
   $('#btnSaveSettings').onclick = saveSettings;
-  $('#btnShare').onclick = shareReport;
-  $('#btnShareOther').onclick = openShareSheet;
-  $('#shareTg').onclick = shareTgHandler;
+  $('#btnExportCsv').onclick = exportAllCsv;
   $('#btnTgDetect').onclick = tgDetectChat;
   $('#btnTgTest').onclick = tgTest;
   $('#shareAll').onclick = shareAllHandler;

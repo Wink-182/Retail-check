@@ -26,9 +26,7 @@
       <div id="offlineBanner" class="banner hidden">📡 Нет сети — не страшно: визиты сохраняются на телефоне, отчёт отправите при появлении связи</div>
       <div id="setupHint" class="banner warn hidden">Сначала укажите ваше имя <button class="link-btn" data-nav="settings">Открыть настройки</button></div>
 
-      <button id="btnNewVisit" class="big-btn">➕ Новый визит</button>
-      <button id="btnShare" class="big-btn accent">⇪ Отправить отчёт</button>
-      <button id="btnShareOther" class="link-btn block hidden">Другие способы отправки</button>
+      <button id="btnNewVisit" class="big-btn accent">➕ Новый визит</button>
 
       <div class="list-header">
         <h2>Мои визиты</h2>
@@ -40,27 +38,28 @@
 
     <!-- ФОРМА ВИЗИТА -->
     <section id="view-visit" class="view hidden">
-      <div class="field">
-        <label for="storeInput">Точка продаж</label>
-        <input id="storeInput" list="storeList" placeholder="Название магазина" autocomplete="off">
-        <datalist id="storeList"></datalist>
+      <h2>Точка продаж</h2>
+      <div class="check-item">
+        <div class="field">
+          <label for="storeInput">Название магазина</label>
+          <input id="storeInput" list="storeList" placeholder="Как называется магазин: «Леруа Мерлен», «Стройдвор»" autocomplete="off">
+          <datalist id="storeList"></datalist>
+        </div>
+        <div class="field">
+          <label for="legalInput">Название юрлица</label>
+          <input id="legalInput" list="legalList" placeholder="На кого оформлен магазин: ООО «Ромашка», ИП Иванов" autocomplete="off">
+          <datalist id="legalList"></datalist>
+        </div>
+        <div class="field last">
+          <label for="phoneInput">Телефон</label>
+          <input id="phoneInput" type="tel" placeholder="Контакт магазина или закупщика: +7 900 000-00-00" inputmode="tel" autocomplete="off">
+        </div>
       </div>
 
       <div class="field">
         <label for="cityInput">Город / населённый пункт</label>
-        <input id="cityInput" list="cityList" placeholder="Где находится точка" autocomplete="off">
+        <input id="cityInput" list="cityList" placeholder="Где находится точка — по нему группируются визиты" autocomplete="off">
         <datalist id="cityList"></datalist>
-      </div>
-
-      <div class="field">
-        <label for="legalInput">Название юрлица</label>
-        <input id="legalInput" list="legalList" placeholder="ООО «Ромашка», ИП Иванов" autocomplete="off">
-        <datalist id="legalList"></datalist>
-      </div>
-
-      <div class="field">
-        <label for="phoneInput">Телефон</label>
-        <input id="phoneInput" type="tel" placeholder="+7 900 000-00-00" inputmode="tel" autocomplete="off">
       </div>
 
       <div class="geo-row">
@@ -114,6 +113,10 @@
         <button id="btnTgTest" class="small-btn">✓ Проверить связь</button>
       </div>
 
+      <h2>Таблица для Excel</h2>
+      <p class="hint">В Telegram уходят читаемые отчёты по каждому визиту. Если нужна общая таблица по всем визитам на телефоне — выгрузите её отсюда.</p>
+      <button id="btnExportCsv" class="small-btn wide">📄 Выгрузить таблицу CSV</button>
+
       <button id="btnSaveSettings" class="big-btn accent">Сохранить настройки</button>
       <p class="hint center" id="versionInfo"></p>
     </section>
@@ -123,9 +126,8 @@
   <!-- ВЫБОР СПОСОБА ОТПРАВКИ -->
   <div id="shareSheet" class="sheet-overlay hidden">
     <div class="sheet">
-      <h3>Как отправить отчёт?</h3>
-      <p class="hint">Для Teams и OneDrive подойдёт «всё сразу». Почтовые приложения не принимают таблицу и фото одним набором — для почты отправьте их по очереди, двумя письмами.</p>
-      <button id="shareTg" class="sheet-btn hidden">✈️ В Telegram — сразу в чат</button>
+      <h3>Как отправить визит?</h3>
+      <p class="hint">Настройте Telegram, чтобы визит уходил в чат одним нажатием. Пока его нет — отправьте файлы через меню телефона. Почтовые приложения не принимают таблицу и фото одним набором: для почты отправьте их по очереди.</p>
       <button id="shareAll" class="sheet-btn">📦 Всё сразу: таблица + фото</button>
       <button id="shareZip" class="sheet-btn hidden">🗜 Одним архивом (ZIP) — удобно для почты</button>
       <button id="shareCsv" class="sheet-btn">📄 Таблица CSV</button>
