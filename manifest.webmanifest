@@ -1,13 +1,13 @@
 {
-  "name": "Retail Check — обход точек",
-  "short_name": "RetailCheck",
+  "name": "Kastamonu Retail Check",
+  "short_name": "Retail Check",
   "description": "Чек-лист визита в розничную точку: выкладка, фото, гео-отметка",
   "lang": "ru",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f4f6f5",
-  "theme_color": "#0f766e",
+  "background_color": "#ffffff",
+  "theme_color": "#06038D",
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }

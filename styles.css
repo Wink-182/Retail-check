@@ -1,13 +1,15 @@
+/* Фирменные цвета Kastamonu: синий 06038D, зелёный 00B140 */
 :root {
-  --accent: #0f766e;
-  --accent-dark: #0b5a54;
-  --bg: #f4f6f5;
+  --accent: #06038D;
+  --accent-dark: #04026B;
+  --brand-green: #00B140;
+  --bg: #f4f5fa;
   --card: #ffffff;
-  --text: #1d2b28;
-  --muted: #64766f;
+  --text: #1c1f2e;
+  --muted: #6b6f85;
   --danger: #c2410c;
-  --ok: #15803d;
-  --border: #dce4e1;
+  --ok: #00B140;
+  --border: #dcdeeb;
   --radius: 14px;
 }
 
@@ -18,7 +20,8 @@ html, body {
   padding: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Arial — вспомогательный корпоративный шрифт Kastamonu */
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
   font-size: 16px;
   -webkit-tap-highlight-color: transparent;
 }
@@ -35,12 +38,26 @@ html, body {
   padding: calc(env(safe-area-inset-top) + 12px) 12px 12px;
 }
 
-.topbar h1 {
+.brand {
   flex: 1;
-  margin: 0;
-  font-size: 1.15rem;
-  font-weight: 600;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.brand-logo {
+  height: 22px;
+  width: auto;
+  display: block;
+}
+
+.brand-sub {
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .icon-btn {
@@ -63,7 +80,7 @@ html, body {
 .hidden { display: none !important; }
 
 .banner {
-  background: #e0f2f1;
+  background: #eceefb;
   border: 1px solid var(--accent);
   color: var(--accent-dark);
   border-radius: var(--radius);
@@ -230,7 +247,7 @@ h2 { font-size: 1.05rem; margin: 22px 0 10px; }
 
 .status.queued  { background: #fef3c7; color: #92400e; }
 .status.sending { background: #dbeafe; color: #1d4ed8; }
-.status.sent    { background: #dcfce7; color: var(--ok); }
+.status.sent    { background: #e3f9ec; color: #008932; }
 .status.error   { background: #fee2e2; color: #b91c1c; }
 
 .visit-del {
@@ -392,7 +409,7 @@ input:focus, textarea:focus, select:focus {
 .multi-opt:last-child { border-bottom: none; }
 
 .multi-opt.hl {
-  background: #ccfbf1;
+  background: #e3f9ec;
   font-weight: 700;
   color: var(--accent-dark);
 }

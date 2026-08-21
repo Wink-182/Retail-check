@@ -38,7 +38,7 @@ const CHECKLIST = [
   { id: 'comment', label: 'Комментарии', type: 'textarea' },
 ];
 
-const APP_VERSION = '2.6.0';
+const APP_VERSION = '3.0.0';
 const MAX_PHOTOS = 50;
 const PHOTO_MAX_SIDE = 1400;
 const PHOTO_QUALITY = 0.72;
@@ -173,14 +173,14 @@ async function renderHome() {
       <div class="visit-actions">
         <button class="act act-edit" aria-label="Изменить" title="Изменить">✎</button>
         <button class="act act-tg" aria-label="Отправить в Telegram" title="Отправить в Telegram">${TG_ICON}</button>
-        <button class="act act-mail" aria-label="Отправить архивом" title="Отправить архивом — на почту, в Teams">✉️</button>
+        <button class="act act-mail" aria-label="Отправить письмом" title="Отправить письмом (PDF)">✉️</button>
         <button class="act act-del" aria-label="Удалить" title="Удалить">🗑</button>
       </div>`;
     li.querySelector('.visit-store').textContent = visitTitle(v);
     li.querySelector('.visit-main').onclick = () => openVisit(v);
     li.querySelector('.act-edit').onclick = () => openVisit(v);
     li.querySelector('.act-tg').onclick = (e) => sendVisit(v, e.currentTarget);
-    li.querySelector('.act-mail').onclick = (e) => shareVisitArchive(v, e.currentTarget);
+    li.querySelector('.act-mail').onclick = (e) => shareVisitPdf(v, e.currentTarget);
     li.querySelector('.act-del').onclick = async () => {
       if (v.status !== 'sent' && !confirm('Визит ещё не отправлен. Удалить безвозвратно?')) return;
       await deleteVisit(v.id);
@@ -706,186 +706,6 @@ async function saveVisit() {
     : 'Визит сохранён');
 }
 
-// ============================================================
-// Отчёт: CSV для Excel + фото.
-// Отправка: сами файлы через «Поделиться» (Android/iPhone);
-// запасной вариант — один ZIP в загрузки (компьютер).
-// ============================================================
-
-// --- ZIP без сжатия (фото уже сжаты в JPEG) ---
-const CRC_TABLE = (() => {
-  const t = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-    t[n] = c >>> 0;
-  }
-  return t;
-})();
-
-function crc32(u8) {
-  let c = 0xFFFFFFFF;
-  for (let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
-  return (c ^ 0xFFFFFFFF) >>> 0;
-}
-
-const u16 = (n) => new Uint8Array([n & 255, (n >> 8) & 255]);
-const u32 = (n) => new Uint8Array([n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >> 24) & 255]);
-
-function dosDateTime(d) {
-  return {
-    time: ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)) & 0xFFFF,
-    date: ((Math.max(0, d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate()) & 0xFFFF,
-  };
-}
-
-// entries: [{name, data: Uint8Array, date: Date}]
-function buildZip(entries) {
-  const enc = new TextEncoder();
-  const parts = [];
-  const central = [];
-  let offset = 0;
-
-  for (const e of entries) {
-    const nameB = enc.encode(e.name);
-    const crc = crc32(e.data);
-    const { time, date } = dosDateTime(e.date || new Date());
-    // флаг 0x0800 — имена файлов в UTF-8 (кириллица)
-    parts.push(
-      u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(time), u16(date),
-      u32(crc), u32(e.data.length), u32(e.data.length), u16(nameB.length), u16(0),
-      nameB, e.data
-    );
-    central.push({ nameB, crc, size: e.data.length, time, date, offset });
-    offset += 30 + nameB.length + e.data.length;
-  }
-
-  let cdLen = 0;
-  for (const c of central) {
-    parts.push(
-      u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(c.time), u16(c.date),
-      u32(c.crc), u32(c.size), u32(c.size), u16(c.nameB.length), u16(0), u16(0),
-      u16(0), u16(0), u32(0), u32(c.offset), c.nameB
-    );
-    cdLen += 46 + c.nameB.length;
-  }
-  parts.push(
-    u32(0x06054b50), u16(0), u16(0), u16(central.length), u16(central.length),
-    u32(cdLen), u32(offset), u16(0)
-  );
-  return new Blob(parts, { type: 'application/zip' });
-}
-
-// --- CSV (разделитель «;», BOM — чтобы Excel понял кириллицу) ---
-function csvEscape(v) {
-  const s = String(v == null ? '' : v);
-  return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-}
-
-// Каждый пункт чек-листа превращается в одну или несколько колонок CSV
-function itemColumns(item) {
-  switch (item.type) {
-    case 'percents': {
-      const cols = item.fields.map(f => ({
-        label: `${f.label}, %`,
-        get: (a) => {
-          const o = a[item.id];
-          return o && o[f.id] !== '' && o[f.id] != null ? o[f.id] : '';
-        },
-      }));
-      cols.push({
-        label: `${item.autoLabel}, %`,
-        get: (a) => {
-          const o = a[item.id];
-          if (!o) return '';
-          const nums = item.fields.map(f => parseFloat(o[f.id])).filter(n => !isNaN(n));
-          if (!nums.length) return '';
-          return String(Math.round((100 - nums.reduce((s, n) => s + n, 0)) * 10) / 10);
-        },
-      });
-      return cols;
-    }
-    case 'checkgroup':
-      return item.items.map(sub => ({
-        label: `${item.label}: ${sub}`,
-        get: (a) => { const o = a[item.id]; return o && o[sub] ? 'Да' : 'Нет'; },
-      }));
-    case 'ratinggroup':
-      return item.items.map(sub => ({
-        label: `${item.label}: ${sub}`,
-        get: (a) => { const o = a[item.id]; return o && o[sub] ? o[sub] : ''; },
-      }));
-    case 'multi':
-      return [{
-        label: item.label,
-        get: (a) => Array.isArray(a[item.id]) ? a[item.id].join(', ') : '',
-      }];
-    default:
-      return [{ label: item.label, get: (a) => asText(a[item.id]) }];
-  }
-}
-
-const ALL_COLUMNS = CHECKLIST.flatMap(itemColumns);
-
-function buildCsv(visits, photoNames) {
-  const headers = [
-    'Сотрудник', 'Город', 'Точка', 'Юрлицо', 'Телефон',
-    'Начало визита', 'Завершение',
-    'Широта', 'Долгота', 'Точность (м)', 'Карта',
-    ...ALL_COLUMNS.map(c => c.label),
-    'Фото', 'ID',
-  ];
-  const lines = [headers.map(csvEscape).join(';')];
-  for (const v of visits) {
-    const a = v.answers || {};
-    lines.push([
-      v.employee, v.city || '', v.store, v.legalName || '', v.phone || '',
-      fmtExcel(v.startedAt), fmtExcel(v.finishedAt),
-      v.geo ? v.geo.lat : '', v.geo ? v.geo.lng : '', v.geo ? v.geo.accuracy : '',
-      v.geo ? `https://yandex.ru/maps/?pt=${v.geo.lng},${v.geo.lat}&z=17` : '',
-      ...ALL_COLUMNS.map(c => c.get(a)),
-      (photoNames.get(v.id) || []).join(', '),
-      v.id,
-    ].map(csvEscape).join(';'));
-  }
-  return '\uFEFF' + lines.join('\r\n');
-}
-
-// --- Сборка файлов отчёта ---
-async function buildReportParts(visits, { withPhotos = true } = {}) {
-  const now = new Date();
-  const photos = []; // [{name, u8, date}]
-  const photoNames = new Map();
-  const used = new Set();
-
-  for (const v of visits) {
-    const d = new Date(v.startedAt);
-    const place = [sanitizeName(v.city), sanitizeName(v.store)].filter(Boolean).join('_') || 'визит';
-    const prefix = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}_${pad2(d.getHours())}-${pad2(d.getMinutes())}_${place}`;
-    const names = [];
-    for (let i = 0; i < (v.photos || []).length; i++) {
-      let name = `${prefix}_${i + 1}.jpg`;
-      let k = 2;
-      while (used.has(name)) name = `${prefix}_${i + 1}_${k++}.jpg`;
-      used.add(name);
-      names.push(name);
-      if (withPhotos) {
-        photos.push({ name, u8: new Uint8Array(await v.photos[i].blob.arrayBuffer()), date: d });
-      }
-    }
-    photoNames.set(v.id, names);
-  }
-
-  const stamp = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}_${pad2(now.getHours())}-${pad2(now.getMinutes())}`;
-  const who = visits.length === 1
-    ? sanitizeName([visits[0].city, visits[0].store].filter(Boolean).join(' '))
-    : sanitizeName(settings.employee);
-  const base = `RetailCheck_${who || 'отчёт'}_${stamp}`;
-  const csvU8 = new TextEncoder().encode(buildCsv(visits, photoNames));
-
-  return { csvName: `${base}.csv`, csvU8, photos, zipName: `${base}.zip` };
-}
-
 function downloadBlob(blob, filename) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1083,10 +903,10 @@ function visitReportText(v) {
   return text.length > 4000 ? text.slice(0, 3990) + '\n…' : text;
 }
 
-// Тот же отчёт без разметки — кладём в архив как отчёт.txt
-function visitReportPlain(v) {
-  return visitReportText(v)
-    .replace(/<a href="([^"]+)">([^<]+)<\/a>/g, '$2: $1')
+// Снимаем разметку Telegram — для PDF нужен чистый текст
+function stripTags(t) {
+  return String(t)
+    .replace(/<a href="([^"]+)">([^<]+)<\/a>/g, '$2')
     .replace(/<\/?b>/g, '')
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 }
@@ -1154,40 +974,242 @@ async function sendVisit(v, btn) {
 }
 
 // ---------- Отправка архивом (почта, Teams и всё остальное) ----------
-const ZIP_SHARE_SUPPORTED = (() => {
-  try {
-    return !!(navigator.canShare &&
-      navigator.canShare({ files: [new File([new Blob(['x'])], 'r.zip', { type: 'application/zip' })] }));
-  } catch {
-    return false;
-  }
-})();
+// ============================================================
+// Отчёт письмом — один PDF: страница с отчётом и по странице
+// на каждое фото. PDF, в отличие от архива, Android пропускает
+// в меню «Поделиться», поэтому почта в нём появляется.
+// ============================================================
+const A4 = { w: 595.28, h: 841.89 };   // размер страницы в пунктах
+const PDF_SCALE = 2;                   // текст рисуем в двойном разрешении
 
-function zipOf(parts, extra = []) {
-  const now = new Date();
-  return buildZip([
-    ...extra.map(e => ({ name: e.name, data: new TextEncoder().encode(e.text), date: now })),
-    { name: parts.csvName, data: parts.csvU8, date: now },
-    ...parts.photos.map(p => ({ name: `фото/${p.name}`, data: p.u8, date: p.date })),
-  ]);
+const pdfEnc = new TextEncoder();
+
+function deflate(u8) {
+  const stream = new Blob([u8]).stream().pipeThrough(new CompressionStream('deflate'));
+  return new Response(stream).arrayBuffer().then(b => new Uint8Array(b));
 }
 
-async function shareVisitArchive(v, btn) {
+const loadImage = (src) => new Promise((resolve, reject) => {
+  const img = new Image();
+  img.onload = () => resolve(img);
+  img.onerror = () => reject(new Error('Не удалось загрузить ' + src));
+  img.src = src;
+});
+
+// Страница отчёта: рисуем на холсте, чтобы кириллица выглядела как в приложении
+async function renderReportPage(v) {
+  const W = Math.round(A4.w * PDF_SCALE);
+  const H = Math.round(A4.h * PDF_SCALE);
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const c = canvas.getContext('2d');
+  c.fillStyle = '#fff';
+  c.fillRect(0, 0, W, H);
+
+  const M = 56 * PDF_SCALE;             // поля страницы
+  let y = M;
+
+  try {
+    const logo = await loadImage('icons/logo-kastamonu-color.png');
+    const lw = 150 * PDF_SCALE;
+    const lh = lw * logo.height / logo.width;
+    c.drawImage(logo, M, y, lw, lh);
+    y += lh + 30 * PDF_SCALE;
+  } catch {
+    y += 12 * PDF_SCALE;
+  }
+
+  c.fillStyle = '#06038D';
+  c.font = `700 ${10 * PDF_SCALE}px Arial, sans-serif`;
+  c.fillText('ОТЧЁТ О ВИЗИТЕ В ТОЧКУ ПРОДАЖ', M, y);
+  y += 10 * PDF_SCALE;
+  c.fillStyle = '#00B140';
+  c.fillRect(M, y, W - M * 2, 2 * PDF_SCALE);
+  y += 30 * PDF_SCALE;
+
+  const maxW = W - M * 2;
+  const line = (text, opts = {}) => {
+    const { size = 11, bold = false, color = '#1d2b28', indent = 0, gap = 7 } = opts;
+    c.fillStyle = color;
+    c.font = `${bold ? '700 ' : ''}${size * PDF_SCALE}px Arial, sans-serif`;
+    const words = String(text).split(' ');
+    let cur = '';
+    const flush = () => {
+      c.fillText(cur, M + indent * PDF_SCALE, y);
+      y += (size + gap) * PDF_SCALE;
+    };
+    for (const word of words) {
+      const test = cur ? cur + ' ' + word : word;
+      if (c.measureText(test).width > maxW - indent * PDF_SCALE && cur) {
+        flush();
+        cur = word;
+      } else {
+        cur = test;
+      }
+    }
+    if (cur) flush();
+  };
+
+  line(v.store || 'Точка без названия', { size: 18, bold: true, color: '#06038D', gap: 9 });
+  if (v.legalName) line(v.legalName, { size: 11, color: '#64766f', gap: 4 });
+  if (v.phone) line(v.phone, { size: 11, color: '#64766f', gap: 4 });
+  if (v.city) line('Город: ' + v.city, { size: 11, color: '#64766f', gap: 4 });
+  line(`${v.employee || 'Сотрудник не указан'} · ${fmtExcel(v.startedAt)}`,
+       { size: 11, color: '#64766f', gap: 4 });
+  if (v.geo) line(`Координаты: ${v.geo.lat}, ${v.geo.lng}`, { size: 10, color: '#64766f', gap: 4 });
+  y += 20 * PDF_SCALE;
+
+  // эмодзи в PDF выглядят чужеродно — ставим обычные знаки
+  const body = checklistLines(v)
+    .map(stripTags)
+    .map(t => t.replace(/^✅\s*/, '✓ ').replace(/^❌\s*/, '✕ '));
+
+  if (!body.length) {
+    line('Чек-лист не заполнен', { size: 11, color: '#64766f' });
+  } else {
+    for (const t of body) {
+      const isBullet = /^[•✓✕]/.test(t);
+      const isHeading = !isBullet && t.endsWith(':');
+      line(t, {
+        size: 11,
+        bold: isHeading,
+        color: isHeading ? '#06038D' : '#1d2b28',
+        indent: isBullet ? 14 : 0,
+        gap: isBullet ? 5 : 7,
+      });
+    }
+  }
+
+  const photos = (v.photos || []).length;
+  if (photos) {
+    y += 14 * PDF_SCALE;
+    line(`Фотографий: ${photos} — на следующих страницах`, { size: 10, color: '#64766f' });
+  }
+
+  // на старых iPhone нет CompressionStream — там кладём страницу как JPEG
+  if (typeof CompressionStream === 'undefined') {
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
+    return { w: W, h: H, jpeg: new Uint8Array(await blob.arrayBuffer()) };
+  }
+
+  // отдаём страницу в цвете: на белом фоне она сжимается почти без потерь
+  const px = c.getImageData(0, 0, W, H).data;
+  const rgb = new Uint8Array(W * H * 3);
+  for (let i = 0, j = 0; i < px.length; i += 4, j += 3) {
+    rgb[j] = px[i];
+    rgb[j + 1] = px[i + 1];
+    rgb[j + 2] = px[i + 2];
+  }
+  return { w: W, h: H, rgb: await deflate(rgb) };
+}
+
+// ---------- Сборка PDF ----------
+const pdfNum = (n) => (Math.round(n * 100) / 100).toString();
+
+async function buildVisitPdf(v) {
+  const pages = [await renderReportPage(v)];
+
+  for (const p of (v.photos || [])) {
+    const u8 = new Uint8Array(await p.blob.arrayBuffer());
+    const bmp = await createImageBitmap(p.blob);
+    pages.push({ w: bmp.width, h: bmp.height, jpeg: u8 });
+    bmp.close();
+  }
+
+  // объект 1 — каталог, дальше нумеруем по порядку добавления
+  const objects = [];
+  const add = (obj) => { objects.push(obj); return objects.length + 1; };
+
+  const pageRefs = [];
+  for (const pg of pages) {
+    const isJpeg = !!pg.jpeg;
+    const data = isJpeg ? pg.jpeg : pg.rgb;
+    const imgNum = add({
+      head: pdfEnc.encode(
+        `<</Type/XObject/Subtype/Image/Width ${pg.w}/Height ${pg.h}` +
+        `/ColorSpace/DeviceRGB/BitsPerComponent 8` +
+        `/Filter/${isJpeg ? 'DCTDecode' : 'FlateDecode'}/Length ${data.length}>>\nstream\n`),
+      data,
+      tail: pdfEnc.encode('\nendstream'),
+    });
+
+    // вписываем изображение в страницу
+    const margin = pg.rgb ? 0 : (pages.indexOf(pg) === 0 ? 0 : 36);
+    const scale = Math.min((A4.w - margin * 2) / pg.w, (A4.h - margin * 2) / pg.h);
+    const dw = pg.w * scale;
+    const dh = pg.h * scale;
+    const content = pdfEnc.encode(
+      `q ${pdfNum(dw)} 0 0 ${pdfNum(dh)} ${pdfNum((A4.w - dw) / 2)} ${pdfNum((A4.h - dh) / 2)} cm /Im Do Q`);
+    const contentNum = add({
+      head: pdfEnc.encode(`<</Length ${content.length}>>\nstream\n`),
+      data: content,
+      tail: pdfEnc.encode('\nendstream'),
+    });
+    pageRefs.push({ imgNum, contentNum });
+  }
+
+  // номер объекта со списком страниц известен заранее — он последний
+  const pagesNum = objects.length + pageRefs.length + 2;
+  const kids = pageRefs.map(po => add({
+    head: pdfEnc.encode(
+      `<</Type/Page/Parent ${pagesNum} 0 R/MediaBox[0 0 ${pdfNum(A4.w)} ${pdfNum(A4.h)}]` +
+      `/Resources<</XObject<</Im ${po.imgNum} 0 R>>>>/Contents ${po.contentNum} 0 R>>`),
+  }));
+  add({
+    head: pdfEnc.encode(
+      `<</Type/Pages/Kids[${kids.map(k => k + ' 0 R').join(' ')}]/Count ${kids.length}>>`),
+  });
+
+  // склеиваем файл, попутно запоминая смещения объектов
+  const parts = [];
+  let offset = 0;
+  const push = (u8) => { parts.push(u8); offset += u8.length; };
+
+  push(pdfEnc.encode('%PDF-1.4\n'));
+  push(new Uint8Array([0x25, 0xE2, 0xE3, 0xCF, 0xD3, 0x0A]));
+
+  const offsets = [0];
+  offsets.push(offset);
+  push(pdfEnc.encode(`1 0 obj\n<</Type/Catalog/Pages ${pagesNum} 0 R>>\nendobj\n`));
+
+  objects.forEach((o, i) => {
+    offsets.push(offset);
+    push(pdfEnc.encode(`${i + 2} 0 obj\n`));
+    push(o.head);
+    if (o.data) push(o.data);
+    if (o.tail) push(o.tail);
+    push(pdfEnc.encode('\nendobj\n'));
+  });
+
+  const xrefPos = offset;
+  const total = objects.length + 2;
+  let xref = `xref\n0 ${total}\n0000000000 65535 f \n`;
+  for (let i = 1; i < total; i++) {
+    xref += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
+  }
+  xref += `trailer\n<</Size ${total}/Root 1 0 R>>\nstartxref\n${xrefPos}\n%%EOF\n`;
+  push(pdfEnc.encode(xref));
+
+  return new Blob(parts, { type: 'application/pdf' });
+}
+
+async function shareVisitPdf(v, btn) {
   const label = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
   try {
-    const parts = await buildReportParts([v]);
-    // в архив кладём и человекочитаемый отчёт — чтобы не открывать Excel
-    const zip = zipOf(parts, [{ name: 'отчёт.txt', text: visitReportPlain(v) }]);
-    const result = await tryShare([new File([zip], parts.zipName, { type: 'application/zip' })]);
+    const pdf = await buildVisitPdf(v);
+    const stamp = fmtExcel(v.startedAt).slice(0, 10).split('.').reverse().join('-');
+    const place = sanitizeName([v.city, v.store].filter(Boolean).join(' ')) || 'визит';
+    const name = `RetailCheck_${place}_${stamp}.pdf`;
+    const result = await tryShare([new File([pdf], name, { type: 'application/pdf' })]);
 
     if (result === 'aborted') return;
     if (result === 'ok') {
-      toast('Отчёт отправлен архивом');
+      toast('Отчёт отправлен');
     } else {
-      // Chrome на Android не разрешает делиться архивами — кладём в загрузки
-      downloadBlob(zip, parts.zipName);
-      toast('Архив сохранён в загрузки — прикрепите его к письму', 6000);
+      downloadBlob(pdf, name);
+      toast('PDF сохранён в загрузки', 5000);
     }
     v.status = 'sent';
     v.edited = false;

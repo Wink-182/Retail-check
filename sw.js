@@ -1,6 +1,6 @@
 // Service worker: кэширует оболочку приложения, чтобы оно открывалось без сети.
 // При изменении файлов приложения увеличьте номер версии.
-const VERSION = 'rc-v9';
+const VERSION = 'rc-v10';
 const ASSETS = [
   './',
   './index.html',
@@ -9,6 +9,8 @@ const ASSETS = [
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './icons/logo-kastamonu.png',
+  './icons/logo-kastamonu-color.png',
 ];
 
 self.addEventListener('install', (e) => {
