@@ -161,17 +161,28 @@ h2 { font-size: 1.05rem; margin: 22px 0 10px; }
 
 .visit-main { cursor: pointer; min-width: 0; }
 
+.visit-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
 .visit-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
-.visit-actions .status { margin-right: auto; }
+.status.edited { background: #fef3c7; color: #92400e; }
 
 .act {
-  width: 42px;
+  width: 40px;
   height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg);
@@ -183,48 +194,18 @@ h2 { font-size: 1.05rem; margin: 22px 0 10px; }
 
 .act:active { transform: scale(0.95); }
 
-.act-send {
-  background: var(--accent);
-  border-color: var(--accent);
+.act svg { width: 22px; height: 22px; display: block; }
+
+/* фирменный синий Telegram */
+.act-tg {
+  background: #229ed9;
+  border-color: #229ed9;
   color: #fff;
 }
 
+.act-mail { font-size: 1rem; }
+
 .act:disabled { opacity: 0.6; cursor: default; }
-
-/* Заголовок города (подпапка) */
-.visit-list li.city-header {
-  background: none;
-  border: none;
-  padding: 10px 4px 6px;
-  margin-bottom: 4px;
-  gap: 8px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.city-header .chev {
-  color: var(--muted);
-  font-size: 0.8rem;
-  transition: transform 0.15s;
-}
-
-.city-header.closed .chev { transform: rotate(-90deg); }
-
-.city-header .city-name {
-  flex: 1;
-  font-weight: 700;
-  font-size: 0.95rem;
-  color: var(--accent-dark);
-}
-
-.city-header .count {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 2px 10px;
-  font-size: 0.8rem;
-  color: var(--muted);
-}
 
 .visit-store {
   font-weight: 600;

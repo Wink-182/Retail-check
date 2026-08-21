@@ -38,7 +38,7 @@ const CHECKLIST = [
   { id: 'comment', label: 'Комментарии', type: 'textarea' },
 ];
 
-const APP_VERSION = '2.5.0';
+const APP_VERSION = '2.6.0';
 const MAX_PHOTOS = 50;
 const PHOTO_MAX_SIDE = 1400;
 const PHOTO_QUALITY = 0.72;
@@ -140,6 +140,14 @@ function nav(view) {
 }
 
 // ---------- Главный экран ----------
+// Логотип Telegram для кнопки отправки
+const TG_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.223-.548.223l.19-2.72 5.56-5.022c.24-.213-.054-.334-.373-.121L8.48 13.037l-2.95-.924c-.64-.203-.658-.64.135-.954l11.566-4.458c.538-.196 1.006.128.832.941z"/></svg>';
+
+// «Леруа Мерлен, ООО «Ромашка»» — пустое просто не пишем
+function visitTitle(v) {
+  return [v.store, v.legalName].filter(Boolean).join(', ') || '(без названия)';
+}
+
 async function renderHome() {
   const visits = (await getAllVisits()).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   const list = $('#visitList');
@@ -148,60 +156,39 @@ async function renderHome() {
   $('#setupHint').classList.toggle('hidden', !!settings.employee);
   $('#offlineBanner').classList.toggle('hidden', navigator.onLine);
 
-  const STATUS_LABEL = { queued: 'Не отправлен', sent: 'Отправлен' };
-
-  // группируем по городам; порядок городов — по самому свежему визиту
-  const byCity = new Map();
   for (const v of visits) {
-    const c = v.city || 'Без города';
-    if (!byCity.has(c)) byCity.set(c, []);
-    byCity.get(c).push(v);
-  }
+    const li = document.createElement('li');
+    const photos = v.photos ? v.photos.length : 0;
+    const status = v.status === 'sent'
+      ? `<span class="status sent">Отправлен</span>` +
+        (v.edited ? '<span class="status edited">отредактирован</span>' : '')
+      : '<span class="status queued">Не отправлен</span>';
 
-  for (const [city, cityVisits] of byCity) {
-    const closed = collapsedCities.has(city);
-    const header = document.createElement('li');
-    header.className = 'city-header' + (closed ? ' closed' : '');
-    header.innerHTML = `<span class="chev">▾</span><span class="city-name"></span><span class="count"></span>`;
-    header.querySelector('.city-name').textContent = city;
-    header.querySelector('.count').textContent = cityVisits.length;
-    header.onclick = () => {
-      if (collapsedCities.has(city)) collapsedCities.delete(city);
-      else collapsedCities.add(city);
+    li.innerHTML = `
+      <div class="visit-main">
+        <div class="visit-store"></div>
+        <div class="visit-meta">${fmtDate(v.startedAt)} · 📷 ${photos}</div>
+        <div class="visit-badges">${status}</div>
+      </div>
+      <div class="visit-actions">
+        <button class="act act-edit" aria-label="Изменить" title="Изменить">✎</button>
+        <button class="act act-tg" aria-label="Отправить в Telegram" title="Отправить в Telegram">${TG_ICON}</button>
+        <button class="act act-mail" aria-label="Отправить архивом" title="Отправить архивом — на почту, в Teams">✉️</button>
+        <button class="act act-del" aria-label="Удалить" title="Удалить">🗑</button>
+      </div>`;
+    li.querySelector('.visit-store').textContent = visitTitle(v);
+    li.querySelector('.visit-main').onclick = () => openVisit(v);
+    li.querySelector('.act-edit').onclick = () => openVisit(v);
+    li.querySelector('.act-tg').onclick = (e) => sendVisit(v, e.currentTarget);
+    li.querySelector('.act-mail').onclick = (e) => shareVisitArchive(v, e.currentTarget);
+    li.querySelector('.act-del').onclick = async () => {
+      if (v.status !== 'sent' && !confirm('Визит ещё не отправлен. Удалить безвозвратно?')) return;
+      await deleteVisit(v.id);
       renderHome();
     };
-    list.appendChild(header);
-    if (closed) continue;
-
-    for (const v of cityVisits) {
-      const li = document.createElement('li');
-      const photos = v.photos ? v.photos.length : 0;
-      li.innerHTML = `
-        <div class="visit-main">
-          <div class="visit-store"></div>
-          <div class="visit-meta">${fmtDate(v.startedAt)} · 📷 ${photos}</div>
-        </div>
-        <div class="visit-actions">
-          <span class="status ${v.status}">${STATUS_LABEL[v.status] || v.status}</span>
-          <button class="act act-edit" aria-label="Изменить" title="Изменить">✎</button>
-          <button class="act act-send" aria-label="Отправить" title="Отправить в Telegram">✈️</button>
-          <button class="act act-del" aria-label="Удалить" title="Удалить">🗑</button>
-        </div>`;
-      li.querySelector('.visit-store').textContent = v.store || '(без названия)';
-      li.querySelector('.visit-main').onclick = () => openVisit(v);
-      li.querySelector('.act-edit').onclick = () => openVisit(v);
-      li.querySelector('.act-send').onclick = (e) => sendVisit(v, e.currentTarget);
-      li.querySelector('.act-del').onclick = async () => {
-        if (v.status !== 'sent' && !confirm('Визит ещё не отправлен. Удалить безвозвратно?')) return;
-        await deleteVisit(v.id);
-        renderHome();
-      };
-      list.appendChild(li);
-    }
+    list.appendChild(li);
   }
 }
-
-const collapsedCities = new Set();
 
 // ---------- Форма визита ----------
 let draft = null; // текущий заполняемый визит
@@ -695,7 +682,9 @@ async function saveVisit() {
   const wasSent = draft.status === 'sent';
   if (!draft.finishedAt) draft.finishedAt = new Date().toISOString();
   else draft.updatedAt = new Date().toISOString();
-  draft.status = 'queued';
+  // уже отправленный визит остаётся отправленным, но помечается изменённым
+  if (wasSent) draft.edited = true;
+  else draft.status = 'queued';
 
   // запоминаем точку, город и юрлицо в списках подсказок
   if (draft.store && !settings.stores.includes(draft.store)) {
@@ -713,8 +702,8 @@ async function saveVisit() {
   draft = null;
   nav('home');
   toast(wasSent
-    ? 'Визит обновлён — попадёт в следующий отчёт'
-    : 'Визит сохранён. В конце дня нажмите «Отправить отчёт»');
+    ? 'Визит обновлён — отправьте заново, если нужно'
+    : 'Визит сохранён');
 }
 
 // ============================================================
@@ -888,7 +877,10 @@ async function buildReportParts(visits, { withPhotos = true } = {}) {
   }
 
   const stamp = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}_${pad2(now.getHours())}-${pad2(now.getMinutes())}`;
-  const base = `RetailCheck_${sanitizeName(settings.employee) || 'отчёт'}_${stamp}`;
+  const who = visits.length === 1
+    ? sanitizeName([visits[0].city, visits[0].store].filter(Boolean).join(' '))
+    : sanitizeName(settings.employee);
+  const base = `RetailCheck_${who || 'отчёт'}_${stamp}`;
   const csvU8 = new TextEncoder().encode(buildCsv(visits, photoNames));
 
   return { csvName: `${base}.csv`, csvU8, photos, zipName: `${base}.zip` };
@@ -1091,6 +1083,14 @@ function visitReportText(v) {
   return text.length > 4000 ? text.slice(0, 3990) + '\n…' : text;
 }
 
+// Тот же отчёт без разметки — кладём в архив как отчёт.txt
+function visitReportPlain(v) {
+  return visitReportText(v)
+    .replace(/<a href="([^"]+)">([^<]+)<\/a>/g, '$2: $1')
+    .replace(/<\/?b>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+}
+
 // Фото уходят следом за отчётом: альбомом либо по одному
 async function tgSendPhotos(photos, chatId) {
   for (let start = 0; start < photos.length; start += 10) {
@@ -1125,82 +1125,35 @@ async function sendVisitToTelegram(v) {
 
 // Кнопка ✈️ на визите
 async function sendVisit(v, btn) {
-  if (!tgConfigured()) return shareSingleVisit(v);
-  const what = v.store || 'визит без названия';
+  if (!tgConfigured()) {
+    toast('Сначала настройте Telegram', 4000);
+    nav('settings');
+    return;
+  }
+  const what = visitTitle(v);
   const again = v.status === 'sent' ? '\nЭтот визит уже отправляли — придёт ещё раз.' : '';
   if (!confirm(`Отправить отчёт в Telegram?\n\n${what}${again}`)) return;
   if (!navigator.onLine) {
     toast('Нет сети — отправьте, когда появится связь', 4000);
     return;
   }
+  const label = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
   try {
     await sendVisitToTelegram(v);
     v.status = 'sent';
+    v.edited = false;
     v.sentAt = new Date().toISOString();
     await putVisit(v);
-    toast(`Отправлено: ${v.store || 'визит без названия'}`);
+    toast(`Отправлено: ${visitTitle(v)}`);
     renderHome();
   } catch (e) {
     toast(e.message, 6000);
-    if (btn) { btn.disabled = false; btn.textContent = '✈️'; }
+    if (btn && btn.isConnected) { btn.disabled = false; btn.innerHTML = label; }
   }
 }
 
-// Запасной путь, когда Telegram не настроен: отдаём визит через системное
-// меню «Поделиться». Почта на Android не принимает таблицу и фото одним
-// набором — поэтому их можно отправить по отдельности.
-let pendingShare = null; // { parts, visits, csvDone, photosDone }
-
-async function shareSingleVisit(v) {
-  toast('Готовим отчёт…');
-  const parts = await buildReportParts([v]);
-  pendingShare = { parts, visits: [v], csvDone: false, photosDone: false };
-
-  $('#shareCsv').textContent = '📄 Таблица CSV';
-  $('#shareCsv').classList.remove('done');
-  $('#sharePhotos').textContent = `🖼 Фото (${parts.photos.length})`;
-  $('#sharePhotos').classList.remove('done');
-  $('#sharePhotos').classList.toggle('hidden', parts.photos.length === 0);
-  $('#shareZip').classList.toggle('hidden', !ZIP_SHARE_SUPPORTED);
-  $('#shareSheet').classList.remove('hidden');
-}
-
-// Выгрузка общей таблицы по всем визитам — из настроек
-async function exportAllCsv() {
-  const visits = (await getAllVisits()).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-  if (!visits.length) {
-    toast('Пока нет визитов');
-    return;
-  }
-  const parts = await buildReportParts(visits, { withPhotos: false });
-  const result = await tryShare([csvFileOf(parts)]);
-  if (result === 'aborted') return;
-  if (result !== 'ok') {
-    downloadBlob(new Blob([parts.csvU8], { type: 'text/csv' }), parts.csvName);
-    toast('Таблица сохранена в загрузки', 4000);
-  }
-}
-
-function closeShareSheet() {
-  $('#shareSheet').classList.add('hidden');
-}
-
-async function markBatchSent(visits) {
-  const when = new Date().toISOString();
-  for (const v of visits) {
-    if (v.status === 'sent') continue;
-    v.status = 'sent';
-    v.sentAt = when;
-    await putVisit(v);
-  }
-  renderHome();
-}
-
-const csvFileOf = (parts) => new File([parts.csvU8], parts.csvName, { type: 'text/csv' });
-const photoFilesOf = (parts) => parts.photos.map(p => new File([p.u8], p.name, { type: 'image/jpeg' }));
-
-// iPhone разрешает делиться ZIP-архивами, Android — нет
+// ---------- Отправка архивом (почта, Teams и всё остальное) ----------
 const ZIP_SHARE_SUPPORTED = (() => {
   try {
     return !!(navigator.canShare &&
@@ -1210,90 +1163,44 @@ const ZIP_SHARE_SUPPORTED = (() => {
   }
 })();
 
-function zipOf(parts) {
+function zipOf(parts, extra = []) {
+  const now = new Date();
   return buildZip([
-    { name: parts.csvName, data: parts.csvU8, date: new Date() },
+    ...extra.map(e => ({ name: e.name, data: new TextEncoder().encode(e.text), date: now })),
+    { name: parts.csvName, data: parts.csvU8, date: now },
     ...parts.photos.map(p => ({ name: `фото/${p.name}`, data: p.u8, date: p.date })),
   ]);
 }
 
-async function shareAllHandler() {
-  const ps = pendingShare;
-  if (!ps) return;
-  const result = await tryShare([csvFileOf(ps.parts), ...photoFilesOf(ps.parts)]);
-  if (result === 'aborted') return;
-  if (result === 'ok') {
-    toast(`Отчёт отправлен`);
-  } else {
-    // компьютер или «Поделиться» недоступно — скачиваем одним ZIP
-    downloadBlob(zipOf(ps.parts), ps.parts.zipName);
-    toast('Отчёт сохранён в загрузки — отправьте его коллегам вручную', 5000);
-  }
-  closeShareSheet();
-  await markBatchSent(ps.visits);
-  pendingShare = null;
-}
+async function shareVisitArchive(v, btn) {
+  const label = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  try {
+    const parts = await buildReportParts([v]);
+    // в архив кладём и человекочитаемый отчёт — чтобы не открывать Excel
+    const zip = zipOf(parts, [{ name: 'отчёт.txt', text: visitReportPlain(v) }]);
+    const result = await tryShare([new File([zip], parts.zipName, { type: 'application/zip' })]);
 
-async function shareZipHandler() {
-  const ps = pendingShare;
-  if (!ps) return;
-  const zip = zipOf(ps.parts);
-  const result = await tryShare([new File([zip], ps.parts.zipName, { type: 'application/zip' })]);
-  if (result === 'aborted') return;
-  if (result === 'ok') {
-    toast(`Отчёт отправлен архивом`);
-  } else {
-    downloadBlob(zip, ps.parts.zipName);
-    toast('Архив сохранён в загрузки', 4000);
-  }
-  closeShareSheet();
-  await markBatchSent(ps.visits);
-  pendingShare = null;
-}
-
-async function shareCsvHandler() {
-  const ps = pendingShare;
-  if (!ps) return;
-  const result = await tryShare([csvFileOf(ps.parts)]);
-  if (result === 'aborted') return;
-  if (result !== 'ok') {
-    downloadBlob(new Blob([ps.parts.csvU8], { type: 'text/csv' }), ps.parts.csvName);
-    toast('Таблица сохранена в загрузки', 4000);
-  }
-  ps.csvDone = true;
-  $('#shareCsv').classList.add('done');
-  $('#shareCsv').textContent = '✓ Таблица отправлена';
-  await markBatchSent(ps.visits); // данные доставлены — визиты считаем отправленными
-  if (ps.parts.photos.length && !ps.photosDone) {
-    toast('Таблица отправлена. Теперь отправьте фото 🖼', 4000);
-  } else {
-    closeShareSheet();
-    pendingShare = null;
+    if (result === 'aborted') return;
+    if (result === 'ok') {
+      toast('Отчёт отправлен архивом');
+    } else {
+      // Chrome на Android не разрешает делиться архивами — кладём в загрузки
+      downloadBlob(zip, parts.zipName);
+      toast('Архив сохранён в загрузки — прикрепите его к письму', 6000);
+    }
+    v.status = 'sent';
+    v.edited = false;
+    v.sentAt = new Date().toISOString();
+    await putVisit(v);
+    renderHome();
+  } catch (e) {
+    toast(String(e.message || e), 5000);
+  } finally {
+    if (btn && btn.isConnected) { btn.disabled = false; btn.innerHTML = label; }
   }
 }
 
-async function sharePhotosHandler() {
-  const ps = pendingShare;
-  if (!ps) return;
-  const result = await tryShare(photoFilesOf(ps.parts));
-  if (result === 'aborted') return;
-  if (result !== 'ok') {
-    const zip = buildZip(ps.parts.photos.map(p => ({ name: p.name, data: p.u8, date: p.date })));
-    downloadBlob(zip, ps.parts.zipName.replace('.zip', '_фото.zip'));
-    toast('Фото сохранены архивом в загрузки', 4000);
-  }
-  ps.photosDone = true;
-  $('#sharePhotos').classList.add('done');
-  $('#sharePhotos').textContent = '✓ Фото отправлены';
-  if (!ps.csvDone) {
-    toast('Фото отправлены. Теперь отправьте таблицу 📄', 4000);
-  } else {
-    closeShareSheet();
-    pendingShare = null;
-  }
-}
-
-// ---------- Настройки ----------
 function renderSettings() {
   $('#employeeInput').value = settings.employee;
   $('#tgTokenInput').value = settings.tgToken;
@@ -1317,17 +1224,8 @@ async function main() {
   $('#btnSaveVisit').onclick = saveVisit;
   $('#btnSettings').onclick = () => nav('settings');
   $('#btnSaveSettings').onclick = saveSettings;
-  $('#btnExportCsv').onclick = exportAllCsv;
   $('#btnTgDetect').onclick = tgDetectChat;
   $('#btnTgTest').onclick = tgTest;
-  $('#shareAll').onclick = shareAllHandler;
-  $('#shareZip').onclick = shareZipHandler;
-  $('#shareCsv').onclick = shareCsvHandler;
-  $('#sharePhotos').onclick = sharePhotosHandler;
-  $('#shareCancel').onclick = () => { closeShareSheet(); pendingShare = null; };
-  $('#shareSheet').onclick = (e) => {
-    if (e.target === $('#shareSheet')) { closeShareSheet(); pendingShare = null; }
-  };
   $('#btnGeoEdit').onclick = openGeoSheet;
   $('#geoOpenMap').onclick = geoOpenMap;
   $('#geoUseCurrent').onclick = geoUseCurrent;
